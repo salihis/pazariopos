@@ -1393,3 +1393,56 @@ Kalan tüm locator'lar (`getByLabel`, `getByRole('button', ...)`, `getByText(USE
 önceki çalıştırmada zaten doğrulandı (2/3 PASS) — değiştirilmedi.
 
 Tekrar çalıştırılacak komut: `pnpm --filter @pazariopos/web test:e2e` (beklenen: 3/3 PASS).
+
+---
+
+## CI/CD (GitHub Actions) — 1 Ağustos 2026
+
+### Yol boyunca bulunan ve düzeltilen 3 gerçek hata (test/CI kurulumu sırasında)
+
+1. **`lint` script'i tamamen kırıktı** — ESLint 9 kurulu ama `eslint.config.js` hiç yoktu,
+   hiçbir TypeScript/React plugin'i kurulu değildi (`eslint src --ext .ts` her paketde anında
+   "couldn't find an eslint.config.js file" ile patlıyordu). Kök dizine gerçek bir flat config
+   (`eslint.config.js`) eklendi: `typescript-eslint` (recommended), Node/browser paketleri için
+   ayrı global'ler, `react-hooks`/`react-refresh` (UI/web/desktop), test dosyaları için gevşetilmiş
+   `no-explicit-any`. **Sonuç: 5/5 paket, 0 hata, 0 uyarı.**
+   - Bu sırada ikinci bir hata da bulundu: flat config'te array sırası önemli (sonraki blok
+     kazanıyor) — test-dosyası istisnası, sondaki genel blok tarafından eziliyordu. Blok sırası
+     düzeltildi.
+   - `server/src/db/prisma.ts`'te artık gereksiz olan bir `eslint-disable` yorumu temizlendi.
+2. **`prisma/migrations/` klasörü hiç yoktu** — proje şimdiye kadar gerçek bir migration
+   geçmişi oluşturmamış (muhtemelen local'de `db push` ile gidilmiş). Bu, gerçek prod deploy
+   öncesi **mutlaka çözülmesi gereken ayrı bir eksik** (aşağıya not düşüldü). CI'daki
+   `db-schema` job'ı bu yüzden `migrate deploy` yerine `db push` kullanıyor.
+3. `turbo.json`'daki `test` task'ı var olmayan bir `coverage/**` çıktısı bekliyordu (vitest
+   `--coverage` olmadan çalıştığı için hep boş) — her çalıştırmada gereksiz "no output files
+   found" uyarısı veriyordu. `outputs` alanı kaldırıldı.
+
+### ✅ `.github/workflows/ci.yml` eklendi — 5 job
+
+| Job | Ne yapıyor | Bu sandbox'ta doğrulandı mı |
+|---|---|---|
+| `lint-and-typecheck` | `turbo run lint` + `turbo run typecheck` | ✅ (lint 5/5; typecheck 4/5 — server'daki 15 hata sadece Prisma engine indirilemediği için, gerçek CI'da internet olduğundan geçecek) |
+| `unit-tests` | `turbo run test` (core+server, mocklu Prisma) | ✅ 67/67 PASS |
+| `db-schema` **(yeni)** | Gerçek Postgres servisi + `prisma validate` + `prisma db push` — sandbox'ın hiç doğrulayamadığı "gerçek DB'ye karşı şema" kontrolü | ⏳ komutlar CLI ile doğrulandı, tam çalıştırma GH Actions'ta (gerçek internet) doğrulanmalı |
+| `e2e` | Playwright (mocklu backend) | ⏳ tarayıcı indirme burada da engelli (`cdn.playwright.dev`) — kullanıcı makinesinde zaten 3/3 PASS edilmişti, aynı test dosyası kullanılıyor |
+| `build` | `turbo run build --filter=web --filter=server` | ✅ ikisi de başarıyla build oldu |
+
+**Kapsam dışı bırakıldı (bilinçli karar):** `apps/desktop` (Tauri) build'i — Rust +
+GTK/WebKit native toolchain gerektiriyor, cross-platform installer üretimi ayrı ve daha büyük
+bir CI işi. Ayrı bir takip maddesi olarak bırakıldı.
+
+### 📋 Kullanıcının Yapması Gerekenler
+
+1. Zip'i açtıktan sonra `git add . && git commit && git push` ile GitHub'a gönder (repo GitHub'da
+   değilse önce oluşturulmalı) — workflow otomatik olarak `main`'e push/PR'da tetiklenecek.
+2. Actions sekmesinden 5 job'ın da yeşil olduğunu doğrula. `db-schema` ve `e2e` job'ları bu
+   sandbox'ta tam çalıştırılamadı (network kısıtları) — ilk gerçek doğrulamaları orada olacak.
+3. **Ayrı, önemli takip maddesi**: `prisma/migrations/` klasörü yok. Prod deploy'dan önce:
+   ```powershell
+   cd server
+   pnpm exec prisma migrate dev --name init
+   ```
+   ile gerçek bir migration geçmişi oluşturulmalı, sonra CI'daki `db-schema` job'ı `db push`
+   yerine `migrate deploy` kullanacak şekilde güncellenmeli (workflow dosyasında net olarak
+   işaretlendi).

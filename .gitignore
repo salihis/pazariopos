@@ -1,23 +1,46 @@
-﻿node_modules/
+# Dependencies
+node_modules/
 .pnpm-store/
+
+# Build outputs
 dist/
 build/
 .next/
 *.tsbuildinfo
+
+# Turborepo
 .turbo/
+
+# Vite
 .vite/
+
+# Test artifacts
 coverage/
 playwright-report/
 test-results/
+apps/web/playwright-report/
+apps/web/test-results/
+
+# Tauri (desktop) native build output
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
+
+# Environment secrets — NEVER commit real .env files
 .env
 .env.local
 .env.*.local
 server/.env
+
+# Prisma
 server/prisma/*.db
 server/prisma/*.db-journal
+
+# Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
 .vscode/*
 !.vscode/extensions.json
 .idea/

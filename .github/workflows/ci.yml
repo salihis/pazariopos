@@ -1,4 +1,28 @@
-﻿name: CI
+name: CI
+
+# ─────────────────────────────────────────────────────────────
+# This is the first CI pipeline for the project (CHECKLIST.md
+# "CI/CD (GitHub Actions)" item). Scope, deliberately:
+#
+#   ✅ lint, typecheck, unit tests (packages/core + server, mocked
+#      Prisma), e2e (Playwright, mocked backend) — all of this was
+#      already written and verified locally/in a sandbox that could
+#      NOT reach binaries.prisma.sh or playwright's browser CDN.
+#      GitHub-hosted runners have full internet access, so this is
+#      the first place these actually run for real.
+#   ✅ db-schema job: spins up a real Postgres service and runs
+#      `prisma generate` + `prisma db push` + `prisma validate` against
+#      it. This closes the "real Postgres" gap the sandbox could never
+#      verify. NOTE: this repo has no prisma/migrations/ history yet
+#      (see CHECKLIST.md) — creating one via `prisma migrate dev` is a
+#      prerequisite for real production deploys and is tracked as
+#      separate follow-up work; this job uses `db push` in the
+#      meantime to still prove the schema applies cleanly.
+#   ❌ apps/desktop (Tauri) build — needs Rust + native GTK/WebKit
+#      toolchains and is a meaningfully bigger CI job (cross-platform
+#      installer builds). Left for a dedicated follow-up, not bundled
+#      in here to keep this pipeline fast and easy to reason about.
+# ─────────────────────────────────────────────────────────────
 
 on:
   push:
@@ -11,6 +35,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Real Prisma engine downloads work fine here (unlike the sandbox this
+  # was developed in) — no special PRISMA_ENGINES_* overrides needed.
   TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
@@ -19,17 +45,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Lint
         run: pnpm turbo run lint
+
       - name: Typecheck
         run: pnpm turbo run typecheck
 
@@ -38,17 +69,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Run unit tests (packages/core, server — mocked Prisma)
         run: pnpm turbo run test
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -81,18 +117,31 @@ jobs:
       DATABASE_URL: postgresql://pos_user:pos_password@localhost:5432/pos_erp?schema=public
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Validate schema.prisma
         working-directory: server
         run: pnpm exec prisma validate
+
+      # NOTE: this repo has no prisma/migrations/ history yet (checked —
+      # `prisma migrate dev` was never run to create one; local/dev setup
+      # so far has relied on implicit schema sync). `prisma migrate deploy`
+      # would be a silent no-op against an empty migrations folder, so we
+      # use `db push` here instead to prove the schema is deployable
+      # end-to-end against a real database. See CHECKLIST.md — creating a
+      # real migration history is a prerequisite for actual production
+      # deployment and is tracked there as separate follow-up work.
       - name: Push schema to a fresh database (proves it applies cleanly)
         working-directory: server
         run: pnpm exec prisma db push --accept-data-loss
@@ -102,20 +151,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Install Playwright browsers
         working-directory: apps/web
         run: pnpm exec playwright install --with-deps chromium
+
       - name: Run e2e tests
         run: pnpm test:e2e
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -131,14 +186,18 @@ jobs:
     needs: [lint-and-typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Build web + server
         run: pnpm turbo run build --filter=@pazariopos/web --filter=@pazariopos/server

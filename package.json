@@ -2,6 +2,7 @@
   "name": "pazariopos",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "description": "POS / Inventory / Accounts / Finance — hybrid Web + Desktop monorepo",
   "packageManager": "pnpm@9.7.0",
   "engines": {
@@ -31,6 +32,11 @@
     "typescript": "^5.6.0",
     "@types/node": "^22.5.0",
     "prettier": "^3.3.0",
-    "eslint": "^9.10.0"
+    "eslint": "^9.10.0",
+    "@eslint/js": "^9.10.0",
+    "typescript-eslint": "^8.15.0",
+    "globals": "^15.12.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.14"
   }
 }

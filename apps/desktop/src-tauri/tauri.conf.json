@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "pazariopos-desktop",
+  "version": "0.1.0",
+  "identifier": "com.pazariopos.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @pazariopos/desktop dev",
+    "beforeBuildCommand": "pnpm --filter @pazariopos/desktop build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PazarioPOS",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "Pazario",
+    "category": "Business",
+    "shortDescription": "PazarioPOS — Hızlı Satış, Stok, Cari Hesap ve Finans",
+    "longDescription": "PazarioPOS: nakit/veresiye satış, stok takibi, cari hesap ve finans yönetimi için hibrit web + masaüstü uygulaması.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

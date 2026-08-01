@@ -1,0 +1,35 @@
+# apps/desktop/src-tauri/Cargo.toml
+[package]
+name = "pazariopos-desktop"
+version = "0.1.0"
+description = "POS / Inventory / Accounts / Finance — Desktop Shell"
+authors = ["POS-ERP Team"]
+edition = "2021"
+
+[lints.rust]
+# Silences "unexpected cfg condition name: mobile" — `mobile` is a real cfg
+# Tauri's build script sets when compiling for iOS/Android targets, but we
+# only ever build desktop right now, so rustc doesn't know about it yet.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(mobile)'] }
+
+[lib]
+name = "pazariopos_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri            = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde            = { version = "1", features = ["derive"] }
+serde_json       = "1"
+tokio            = { version = "1", features = ["full"] }
+sqlx             = { version = "0.7", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+uuid             = { version = "1", features = ["v4", "serde"] }
+chrono           = { version = "0.4", features = ["serde"] }
+thiserror        = "1"
+serialport       = "4"          # cross-platform serial port I/O (ESC/POS over USB/RS-232)
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

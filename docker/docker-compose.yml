@@ -1,0 +1,50 @@
+# docker/docker-compose.yml
+# ─────────────────────────────────────────────────────────────
+# Local development infrastructure only. Production deployment
+# uses managed PostgreSQL/Redis — see ARCHITECTURE.md §9 Deployment.
+#
+# NOTE on naming: container_name below uses the "pazariopos" brand,
+# but the Postgres database name (POSTGRES_DB) and volume names were
+# deliberately left as "pos_erp" / "pos_erp_*_data" — renaming those
+# would make Docker create fresh empty volumes on next `docker compose
+# up`, discarding already-seeded/tested data. Rename them together
+# with DATABASE_URL in server/.env only when you're ready for a clean
+# reset (drop volumes, re-migrate, re-seed).
+# ─────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pazariopos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pos_user
+      POSTGRES_PASSWORD: pos_password
+      POSTGRES_DB: pos_erp
+    ports:
+      - "5433:5432"
+    volumes:
+      - pos_erp_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos_user -d pos_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pazariopos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - pos_erp_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pos_erp_postgres_data:
+  pos_erp_redis_data:

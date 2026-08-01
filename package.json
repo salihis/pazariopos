@@ -1,0 +1,36 @@
+{
+  "name": "pazariopos",
+  "private": true,
+  "version": "0.1.0",
+  "description": "POS / Inventory / Accounts / Finance — hybrid Web + Desktop monorepo",
+  "packageManager": "pnpm@9.7.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@pazariopos/web --filter=@pazariopos/server --parallel",
+    "dev:web": "turbo run dev --filter=@pazariopos/web",
+    "dev:desktop": "pnpm --filter @pazariopos/desktop run tauri:dev",
+    "dev:server": "turbo run dev --filter=@pazariopos/server",
+    "build": "turbo run build",
+    "build:web": "turbo run build --filter=@pazariopos/web",
+    "build:desktop": "turbo run build --filter=@pazariopos/desktop",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e --filter=@pazariopos/web",
+    "db:migrate": "pnpm --filter @pazariopos/server run db:migrate",
+    "db:studio": "pnpm --filter @pazariopos/server run db:studio",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.5.0",
+    "prettier": "^3.3.0",
+    "eslint": "^9.10.0"
+  }
+}

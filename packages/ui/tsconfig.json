@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@pazariopos/ui/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1446,3 +1446,52 @@ bir CI işi. Ayrı bir takip maddesi olarak bırakıldı.
    ile gerçek bir migration geçmişi oluşturulmalı, sonra CI'daki `db-schema` job'ı `db push`
    yerine `migrate deploy` kullanacak şekilde güncellenmeli (workflow dosyasında net olarak
    işaretlendi).
+   
+@'
+
+### 🔧 Güncelleme #2 — GitHub'a ilk push sürecinde bulunan/çözülen sorunlar (2 Ağustos 2026)
+
+Kullanıcı projeyi ilk kez GitHub'a push ederken art arda birkaç ortam/altyapı sorunu çıktı,
+hepsi çözüldü:
+
+1. **`git add .` ile 800+ MB'lık Rust derleme çıktıları commit'e giriyordu**
+   (`apps/desktop/src-tauri/target/`) — kök neden: `.gitignore` kullanıcının makinesine hiç
+   ulaşmamıştı (muhtemelen Windows'un yerleşik "Tümünü Ayıkla" aracı zip içindeki nokta (`.`)
+   ile başlayan dosya/klasörleri (`.gitignore`, `.github`) atlıyor). `.git` silinip sıfırdan
+   başlandı, `.gitignore` elle oluşturuldu.
+2. **`.github/workflows/ci.yml` GitHub'a hiç gitmemişti** — aynı kök neden (nokta ile başlayan
+   klasör). Actions sekmesi boş "Get started" şablon galerisini gösteriyordu. Dosya elle
+   (PowerShell heredoc ile) oluşturuldu.
+3. **`eslint.config.js` de eksikti** — bu sefer nokta ile başlamıyor ama muhtemelen kullanıcı,
+   CI/CD turundan sonraki güncel zip'i hiç yeniden açmamıştı (önceki turlardan kalma dosyalarla
+   devam ediliyordu). **Kesin çözüm**: `.git` hariç her şey silinip, `Expand-Archive` ile
+   (Gezgin'in "Tümünü Ayıkla"sı yerine) zip'in tamamı temiz şekilde yeniden açıldı — böylece
+   dosya-dosya avlamak yerine tüm eksikler tek seferde giderildi.
+4. **`prisma generate` GitHub Actions'ta (gerçek internetle bile) otomatik çalışmamıştı** —
+   kök neden: pnpm'in yeni varsayılan davranışı, allowlist'te olmayan bağımlılıkların
+   `postinstall` script'lerini çalıştırmıyor; `@prisma/client`'ın kendi `postinstall`'ı
+   (`prisma generate` çalıştıran) bu yüzden sessizce atlanmış. `tsc` gerçek üretilmiş tipleri
+   bulamayınca `server#typecheck` "Module '@prisma/client' has no exported member
+   'PrismaClient'" hatalarıyla düştü — bu sandbox'ta görülen 15 hatanın birebir aynısı, ama
+   nedeni engel indirme değil, script'in çalışmamasıydı. Çözüm: `ci.yml`'deki
+   `lint-and-typecheck`, `unit-tests` ve `build` job'larına `pnpm exec prisma generate` adımı
+   açıkça eklendi.
+
+### ✅ SONUÇ — GERÇEKTEN UÇTAN UCA DOĞRULANDI (GitHub Actions, run #4, 2 Ağustos 2026)
+
+**5/5 job yeşil, "Success", toplam 1m 3s:**
+- Lint & Typecheck — 30s ✅
+- Unit Tests (core + server) — 20s ✅ (67/67 test)
+- Prisma Schema & Migrations (real Postgres) — 32s ✅
+- E2E (Playwright, mocked backend) — 56s ✅
+- Build (web + server) — 27s ✅
+
+**OTOMATİK TESTLER + CI/CD — TAMAMLANDI VE GERÇEKTEN UÇTAN UCA DOĞRULANDI** (GitHub Actions'ta,
+kullanıcının kendi reposunda, gerçek Postgres + gerçek tarayıcı ile).
+
+**Kalan tek ayrı takip maddesi**: `prisma/migrations/` geçmişi hâlâ yok — prod deploy öncesi
+`prisma migrate dev --name init` ile oluşturulmalı, ardından `db-schema` job'ı `db push`
+yerine `migrate deploy` kullanacak şekilde güncellenmeli.
+'@ | Add-Content -Encoding utf8 CHECKLIST.md
+
+

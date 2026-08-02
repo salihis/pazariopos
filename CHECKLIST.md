@@ -1446,8 +1446,6 @@ bir CI işi. Ayrı bir takip maddesi olarak bırakıldı.
    ile gerçek bir migration geçmişi oluşturulmalı, sonra CI'daki `db-schema` job'ı `db push`
    yerine `migrate deploy` kullanacak şekilde güncellenmeli (workflow dosyasında net olarak
    işaretlendi).
-   
-@'
 
 ### 🔧 Güncelleme #2 — GitHub'a ilk push sürecinde bulunan/çözülen sorunlar (2 Ağustos 2026)
 
@@ -1472,8 +1470,8 @@ hepsi çözüldü:
    `postinstall` script'lerini çalıştırmıyor; `@prisma/client`'ın kendi `postinstall`'ı
    (`prisma generate` çalıştıran) bu yüzden sessizce atlanmış. `tsc` gerçek üretilmiş tipleri
    bulamayınca `server#typecheck` "Module '@prisma/client' has no exported member
-   'PrismaClient'" hatalarıyla düştü — bu sandbox'ta görülen 15 hatanın birebir aynısı, ama
-   nedeni engel indirme değil, script'in çalışmamasıydı. Çözüm: `ci.yml`'deki
+   'PrismaClient'" hatalarıyla düştü — **bu sandbox'ta gördüğümüz 15 hatanın birebir aynısı**,
+   ama bu sefer nedeni engel indirme değil, script'in çalışmamasıydı. Çözüm: `ci.yml`'deki
    `lint-and-typecheck`, `unit-tests` ve `build` job'larına `pnpm exec prisma generate` adımı
    açıkça eklendi.
 
@@ -1482,16 +1480,81 @@ hepsi çözüldü:
 **5/5 job yeşil, "Success", toplam 1m 3s:**
 - Lint & Typecheck — 30s ✅
 - Unit Tests (core + server) — 20s ✅ (67/67 test)
-- Prisma Schema & Migrations (real Postgres) — 32s ✅
-- E2E (Playwright, mocked backend) — 56s ✅
+- Prisma Schema & Migrations (real Postgres) — 32s ✅ (bu sandbox'ın hiç doğrulayamadığı,
+  gerçek Postgres'e karşı ilk gerçek doğrulama)
+- E2E (Playwright, mocked backend) — 56s ✅ (bu sandbox'ın hiç doğrulayamadığı, gerçek
+  tarayıcıyla ilk gerçek doğrulama)
 - Build (web + server) — 27s ✅
 
 **OTOMATİK TESTLER + CI/CD — TAMAMLANDI VE GERÇEKTEN UÇTAN UCA DOĞRULANDI** (GitHub Actions'ta,
 kullanıcının kendi reposunda, gerçek Postgres + gerçek tarayıcı ile).
 
-**Kalan tek ayrı takip maddesi**: `prisma/migrations/` geçmişi hâlâ yok — prod deploy öncesi
-`prisma migrate dev --name init` ile oluşturulmalı, ardından `db-schema` job'ı `db push`
-yerine `migrate deploy` kullanacak şekilde güncellenmeli.
-'@ | Add-Content -Encoding utf8 CHECKLIST.md
+**Kalan tek ayrı takip maddesi** (kapsam dışı bırakıldı, ayrı iş): `prisma/migrations/`
+geçmişi hâlâ yok — prod deploy öncesi `prisma migrate dev --name init` ile oluşturulmalı,
+ardından `db-schema` job'ı `db push` yerine `migrate deploy` kullanacak şekilde güncellenmeli.
 
+---
 
+## Back-office Ekranları (Kasa/Cari/Finans Yönetimi) — 2 Ağustos 2026
+
+### Tespit: backend + API client + store katmanı zaten tamamen hazırdı
+
+Kod tabanını incelerken ortaya çıktı: `server/src/routes/{cashRegisters,accounts,bankAccounts,
+cheques,categories,reports}.ts`, `packages/core/src/api/salesApi.ts`'deki tüm API client
+metodları (`cashRegistersApi`, `accountsApi`, `bankAccountsApi`, `chequesApi`, `categoriesApi`,
+`reportsApi`) ve `useFinanceStore`/`useAccountStore` Zustand store'ları **zaten tam
+implementasyonluydu**. Eksik olan tek şey UI ekranlarıydı — bu tur sadece frontend işiydi.
+
+### ✅ Eklenen ekranlar (packages/ui/src/BackOffice/)
+
+- **`CashRegisterPanel.tsx`** — Kasa listesi, manuel para giriş/çıkış, hareket geçmişi,
+  gün sonu kasa sayımı (beklenen/sayılan/fark).
+- **`AccountsPanel.tsx`** — Cari hesap listesi (tip filtresi: müşteri/tedarikçi/çalışan/diğer),
+  yeni hesap oluşturma, hesap detay + hareket geçmişi (fatura/ödeme/iade/faiz), ödeme alma,
+  **riskli hesaplar** görünümü (kredi limiti aşanlar).
+- **`FinancePanel.tsx`** — 4 alt-sekme: Banka Hesapları (liste + hareket), Çek/Senet (liste +
+  durum filtreleme + vade takvimi + durum güncelleme), Kategoriler (gelir/gider), Raporlar
+  (tarih aralıklı nakit akışı / gelir-gider / kâr-zarar).
+- **`BackOfficeScreen.tsx`** — 3 panel arası sekme geçişi (Kasa / Cari Hesap / Finans).
+
+### Navigasyon ve RBAC
+
+`PosScreen.tsx`'e dokunmadan (mevcut login/POS akışını ve e2e testini bozmamak için) header'a
+sadece `admin`/`accountant` rolündeki kullanıcılara görünen bir **"Yönetim Paneli"** butonu
+eklendi — bu, back-office rotalarındaki sunucu tarafı RBAC ile birebir eşleşiyor (kasiyer/depo/
+viewer rolleri butonu hiç görmüyor; zaten POS içindeki dar cari-ödeme işlemine erişimleri var).
+
+### Küçük ek: `money()`/`parseMoneyInput()` paylaşılan hale getirildi
+
+Daha önce `PosScreen.tsx` içinde özel olan bu yardımcılar `packages/ui/src/lib/format.ts`'e
+taşındı (artık back-office panelleri de kullanıyor) — `PosScreen.tsx`'in kendisi de bu ortak
+modülü kullanacak şekilde güncellendi, davranışta değişiklik yok.
+
+### ✅ Bu sandbox'ta doğrulanan
+
+```
+pnpm turbo run typecheck --filter=@pazariopos/ui --filter=@pazariopos/web --filter=@pazariopos/desktop
+# 3/3 PASS
+pnpm turbo run lint --filter=@pazariopos/ui --filter=@pazariopos/web --filter=@pazariopos/desktop
+# 4/4 PASS (core dahil, cache nedeniyle otomatik tetiklendi)
+pnpm turbo run build --filter=@pazariopos/web
+# PASS — CSS boyutu 20.44 kB'a çıktı (yeni BackOffice class'ları Tailwind tarafından
+# doğru şekilde tarandığının kanıtı, styles.css'teki @source direktifi sayesinde)
+pnpm --filter @pazariopos/core test && pnpm --filter @pazariopos/server test
+# 67/67 PASS — regresyon yok
+```
+
+Server typecheck'teki her zamanki 15 Prisma-regenerate hatası (bilinen sandbox kısıtı,
+CI'da `prisma generate` adımıyla çözülüyor) dışında hiç yeni hata yok.
+
+### ⏳ Kapsam dışı bırakılan (ayrı takip maddeleri)
+
+- Bu ekranlar için ayrı otomatik test yazılmadı (component-level UI testleri, mevcut
+  "hâlâ yazılmadı" listesindeki `packages/ui` test maddesiyle birleştirilebilir).
+- Kullanıcı yönetimi ekranı (`usersApi` zaten hazır ama UI'ı yok) — ayrı bir iş.
+- `AccountsPanel`'deki "yeni hesap" formu temel alanları kapsıyor (ad, tip, telefon, kredi
+  limiti, vade); vergi no/adres/IBAN/indirim oranı gibi alanlar formda yok — API zaten
+  destekliyor, istenirse form genişletilebilir.
+
+**Kullanıcı makinesinde henüz doğrulanmadı** — zip'i aldıktan sonra `pnpm dev` ile `Yönetim
+Paneli` butonunu (admin/accountant kullanıcıyla giriş yaparak) test etmesi gerekiyor.

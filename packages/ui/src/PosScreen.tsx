@@ -33,6 +33,8 @@ import {
   type Product,
   type CartLine,
 } from '@pazariopos/core'
+import { money, parseMoneyInput } from './lib/format'
+import { BackOfficeScreen } from './BackOffice/BackOfficeScreen'
 
 function productToCartLine(product: Product, quantity = 1): CartLine {
   const discountAmount = 0
@@ -58,10 +60,6 @@ function productToCartLine(product: Product, quantity = 1): CartLine {
     taxAmount,                 // per-unit tax (KDV) amount
     total: (netUnitPrice - discountAmount + taxAmount) * quantity,
   }
-}
-
-function money(cents: number): string {
-  return (cents / 100).toFixed(2)
 }
 
 // ── Component ────────────────────────────────────────────────
@@ -102,6 +100,10 @@ export function PosScreen() {
   const [paymentMessage, setPaymentMessage] = useState<string | null>(null)
   const [loginUsername, setLoginUsername] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
+  // Back-office is only meaningful once logged in — gated to
+  // admin/accountant in the header button below, mirroring the
+  // server's RBAC on the routes those screens call.
+  const [view, setView] = useState<'pos' | 'backoffice'>('pos')
 
   // ── Restore a previously-saved session, if any (Auth Phase 1) ──
   useEffect(() => {
@@ -165,14 +167,14 @@ export function PosScreen() {
     setPaymentMessage(null)
     if (!customerId) return
 
-    const amountTl = Number(paymentAmountInput.replace(',', '.'))
-    if (!Number.isFinite(amountTl) || amountTl <= 0) {
+    const amountKurus = parseMoneyInput(paymentAmountInput)
+    if (amountKurus === null) {
       setPaymentMessage('Geçerli bir tutar girin.')
       return
     }
 
     try {
-      await recordPayment(customerId, Math.round(amountTl * 100))
+      await recordPayment(customerId, amountKurus)
       setPaymentAmountInput('')
       setPaymentMessage('Ödeme kaydedildi.')
     } catch (err) {
@@ -294,6 +296,18 @@ export function PosScreen() {
           <span className="text-sm text-[var(--color-paper)]/80">
             {currentUser.name} <span className="text-[var(--color-saffron-light)]">({currentUser.role})</span>
           </span>
+          {(currentUser.role === 'admin' || currentUser.role === 'accountant') && (
+            <button
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                view === 'backoffice'
+                  ? 'border-[var(--color-saffron)] bg-[var(--color-saffron)] text-[var(--color-ink)]'
+                  : 'border-[var(--color-paper)]/30 text-[var(--color-paper)] hover:bg-white/10'
+              }`}
+              onClick={() => setView(v => (v === 'pos' ? 'backoffice' : 'pos'))}
+            >
+              {view === 'backoffice' ? '← Kasaya Dön' : 'Yönetim Paneli'}
+            </button>
+          )}
           <button
             className="rounded-full border border-[var(--color-paper)]/30 px-3 py-1 text-xs font-medium text-[var(--color-paper)] transition hover:bg-white/10"
             onClick={logout}
@@ -305,6 +319,10 @@ export function PosScreen() {
       </header>
 
       <div className="mx-auto max-w-6xl p-6">
+        {view === 'backoffice' ? (
+          <BackOfficeScreen />
+        ) : (
+          <>
         {lastSyncError && (
           <div className="mb-4 rounded-lg border border-[var(--color-copper)]/30 bg-[var(--color-copper-light)]/15 px-3 py-2 text-sm text-[var(--color-copper)]">
             Son senkronizasyon hatası: {lastSyncError}
@@ -492,6 +510,8 @@ export function PosScreen() {
             )}
           </section>
         </div>
+          </>
+        )}
       </div>
     </div>
   )

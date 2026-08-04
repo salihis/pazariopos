@@ -154,6 +154,7 @@ export type CreateProductInput = {
   name: string
   barcode?: string[]
   price: number
+  costPrice?: number | null
   taxRate: number
   stock?: number
   lowStockThreshold?: number
@@ -166,6 +167,7 @@ export type UpdateProductInput = {
   name: string
   barcode: string[]
   price: number
+  costPrice?: number | null
   taxRate: number
   lowStockThreshold: number
   unit: Product['unit']

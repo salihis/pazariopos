@@ -17,6 +17,7 @@ const productSchema = z.object({
   name: z.string(),
   barcode: z.array(z.string()),
   price: z.number().int(),
+  costPrice: z.number().int().nullable(),
   taxRate: z.number(),
   stock: z.number(),
   lowStockThreshold: z.number(),

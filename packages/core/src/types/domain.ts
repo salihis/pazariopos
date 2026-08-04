@@ -11,6 +11,7 @@ export interface Product {
   name: string
   barcode: string[]
   price: number        // stored in smallest currency unit (kuruş / cent)
+  costPrice: number | null   // Alış fiyatı (KDV dahil, kuruş) — null for products created before this field existed
   taxRate: number      // e.g. 0.18 for 18% VAT
   stock: number
   lowStockThreshold: number   // stock at/below this triggers a low-stock warning

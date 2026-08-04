@@ -38,7 +38,8 @@ model Product {
   name     String
   barcode  String[] // Postgres native array — multiple barcodes per product
 
-  price             Int          // minor currency units (kuruş/cent)
+  price             Int          // Satış fiyatı — KDV dahil, kuruş/cent (bkz. saleMapper.ts taxRate reconstruction)
+  costPrice         Int?         @map("cost_price") // Alış fiyatı — KDV dahil, kuruş/cent. Nullable: bu alan eklenmeden önceki ürünlerde boş.
   taxRate           Float        @map("tax_rate")
   stock             Int          @default(0)
   lowStockThreshold Int          @default(0) @map("low_stock_threshold")

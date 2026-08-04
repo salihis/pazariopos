@@ -1681,3 +1681,47 @@ pnpm dev
 
 Sonra "Yönetim Paneli" → "📦 Ürünler" sekmesini ve POS'taki yeni "Ödeme Al (Kredi Kartı)"
 butonunu test etmesi gerekiyor.
+
+### 🔧 Güncelleme — Ürün Ekleme ekranı, kullanıcının verdiği mockup'a göre yeniden tasarlandı (2 Ağustos 2026)
+
+Kullanıcı bir ekran taslağı (URUNEKLEME.jpg) paylaştı. Bu, bir şema eklemesi gerektirdi:
+
+- **Şema**: `Product.costPrice` eklendi (Alış Fiyatı — KDV dahil, kuruş, nullable). Önceden
+  sadece tek bir `price` (Satış Fiyatı) vardı.
+- **`ProductsPanel.tsx` mockup'a göre tamamen yeniden yazıldı**:
+  - Barkod + "Yeni Barkod Oluştur" (geçerli check-digit'li, GS1 iç-kullanım aralığında (20x)
+    rastgele EAN-13 üretiyor — gerçek ürün barkodlarıyla asla çakışmaz)
+  - Ürün Adı / Birim + Ürün Kodu (=sku, düzenlemede değiştirilemez)
+  - Alış Fiyatı + Satış Fiyatı, her biri kendi "KDV Dahil" checkbox'ıyla — işaretli değilse
+    girilen tutar net kabul edilip KDV oranıyla brüte çevriliyor (sistem içeride her zaman
+    KDV dahil/brüt tutuyor, checkbox sadece veri girişi kolaylığı)
+  - KDV Oranı + Kritik Stok (=lowStockThreshold)
+  - **Ana Kategori / Alt Kategori** — `Category.parentId` hiyerarşisi zaten backend'de tam
+    hazırdı, sadece UI'ı yoktu; bu panel onu kullanan ilk ekran
+  - Mevcut Stok (salt okunur, düzenlemede) / Eklenen Stok (yeni üründe başlangıç stoğu;
+    düzenlemede mevcut stoğa eklenecek miktar — `adjustStock` API'si üzerinden ayrı bir
+    çağrıyla, `PUT` ile kör ezme değil)
+  - Ana Depo
+
+### ✅ Bu sandbox'ta doğrulanan
+
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+test (core+server): 67/67 PASS — regresyon yok
+build (web): PASS
+```
+
+### 📋 Kullanıcının yapması gereken
+
+Önceki turdaki migration (`isActive`/kategori FK) henüz uygulanmadığı için, Prisma bu ikisini
+**otomatik olarak tek migration'da** birleştirecek — ayrı ayrı komut çalıştırmana gerek yok:
+
+```powershell
+cd server
+pnpm exec prisma generate
+pnpm exec prisma migrate dev --name product_management_fields
+pnpm db:seed
+cd ..
+pnpm dev
+```

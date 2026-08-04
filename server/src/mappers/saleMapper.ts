@@ -39,6 +39,7 @@ function toCartLine(line: PrismaSaleLine): CartLine {
       name: line.productName,
       barcode: [],
       price: line.unitPrice,
+      costPrice: null,
       // unitPrice and taxAmount are both stored PER-UNIT (see routes/sales.ts —
       // it persists CartLine.unitPrice/taxAmount directly, only `total` is
       // multiplied by quantity), so this must NOT also divide by quantity.

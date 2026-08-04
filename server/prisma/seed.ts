@@ -74,6 +74,7 @@ async function main() {
       name: 'Espresso Beans 250g',
       barcode: ['8690000000017'],
       price: 24900,
+      costPrice: 15000,
       taxRate: 0.18,
       stock: 42,
       lowStockThreshold: 10,
@@ -85,6 +86,7 @@ async function main() {
       name: 'Ceramic Mug',
       barcode: ['8690000000024'],
       price: 8900,
+      costPrice: 4500,
       taxRate: 0.18,
       stock: 3,              // deliberately below threshold — demonstrates the low-stock badge
       lowStockThreshold: 5,
@@ -96,6 +98,7 @@ async function main() {
       name: 'Milk 1L',
       barcode: ['8690000000031'],
       price: 3200,
+      costPrice: 2400,
       taxRate: 0.01,
       stock: 60,
       lowStockThreshold: 15,

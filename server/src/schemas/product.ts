@@ -17,8 +17,23 @@ export const createProductSchema = z.object({
   stock: z.number().int().nonnegative().default(0),
   lowStockThreshold: z.number().int().nonnegative().default(0),
   unit: z.enum(['piece', 'box', 'kg', 'lt']).default('piece'),
-  categoryId: z.string().default(''),
+  categoryId: z.string().nullable().optional(),
   warehouseId: z.string().default('default'),
+})
+
+// PUT /api/products/:id — full edit. `sku` is deliberately NOT editable
+// here (it's the barcode-scan/receipt identity of the product; changing
+// it is a delete+recreate decision, not an update, so it's out of scope
+// for this MVP edit endpoint).
+export const updateProductSchema = z.object({
+  name: z.string().min(1),
+  barcode: z.array(z.string()),
+  price: z.number().int().nonnegative(),
+  taxRate: z.number().min(0).max(1),
+  lowStockThreshold: z.number().int().nonnegative(),
+  unit: z.enum(['piece', 'box', 'kg', 'lt']),
+  categoryId: z.string().nullable().optional(),
+  warehouseId: z.string(),
 })
 
 export const adjustStockSchema = z.object({
@@ -30,4 +45,5 @@ export const adjustStockSchema = z.object({
 })
 
 export type CreateProductInput = z.infer<typeof createProductSchema>
+export type UpdateProductInput = z.infer<typeof updateProductSchema>
 export type AdjustStockInput = z.infer<typeof adjustStockSchema>

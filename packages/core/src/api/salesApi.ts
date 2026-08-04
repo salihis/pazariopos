@@ -149,15 +149,57 @@ export const accountsApi = {
   },
 }
 
+export type CreateProductInput = {
+  sku: string
+  name: string
+  barcode?: string[]
+  price: number
+  taxRate: number
+  stock?: number
+  lowStockThreshold?: number
+  unit?: Product['unit']
+  categoryId?: string | null
+  warehouseId?: string
+}
+
+export type UpdateProductInput = {
+  name: string
+  barcode: string[]
+  price: number
+  taxRate: number
+  lowStockThreshold: number
+  unit: Product['unit']
+  categoryId?: string | null
+  warehouseId: string
+}
+
 export const productsApi = {
   /**
-   * Fetches the full product catalog. Unlike accountsApi, this is safe
-   * to call opportunistically — InventoryService caches the result in
+   * Fetches the product catalog. Unlike accountsApi, this is safe to
+   * call opportunistically — InventoryService caches the result in
    * memory so barcode lookups keep working offline (architecture rule:
    * inventory reads may serve stale data, unlike account balances).
+   * Defaults to active products only (POS quick-add catalog);
+   * back-office product management passes includeInactive=true.
    */
-  listProducts(): Promise<Product[]> {
-    return request<Product[]>('/api/products')
+  listProducts(includeInactive = false): Promise<Product[]> {
+    const query = includeInactive ? '?includeInactive=true' : ''
+    return request<Product[]>(`/api/products${query}`)
+  },
+  createProduct(input: CreateProductInput): Promise<Product> {
+    return request<Product>('/api/products', { method: 'POST', body: JSON.stringify(input) })
+  },
+  updateProduct(id: string, input: UpdateProductInput): Promise<Product> {
+    return request<Product>(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(input) })
+  },
+  deactivateProduct(id: string): Promise<Product> {
+    return request<Product>(`/api/products/${id}/deactivate`, { method: 'PATCH' })
+  },
+  activateProduct(id: string): Promise<Product> {
+    return request<Product>(`/api/products/${id}/activate`, { method: 'PATCH' })
+  },
+  adjustStock(id: string, delta: number, reason: string): Promise<Product> {
+    return request<Product>(`/api/products/${id}/stock`, { method: 'PATCH', body: JSON.stringify({ delta, reason }) })
   },
 }
 

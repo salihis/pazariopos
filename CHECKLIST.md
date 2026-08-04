@@ -1558,3 +1558,126 @@ CI'da `prisma generate` adımıyla çözülüyor) dışında hiç yeni hata yok.
 
 **Kullanıcı makinesinde henüz doğrulanmadı** — zip'i aldıktan sonra `pnpm dev` ile `Yönetim
 Paneli` butonunu (admin/accountant kullanıcıyla giriş yaparak) test etmesi gerekiyor.
+
+### 🔧 Güncelleme #3 — gerçek migration geçmişi oluşturuldu (2 Ağustos 2026)
+
+Kullanıcı local ortamında (Docker Postgres + `prisma migrate dev --name init`) projenin
+**ilk gerçek migration geçmişini** oluşturdu (`server/prisma/migrations/`). Bu, en baştan beri
+"hâlâ yazılmadı" listesindeki bir eksikti. CI'daki `db-schema` job'ı buna göre güncellendi:
+`prisma db push` (geçici çözüm) yerine artık `prisma migrate deploy` kullanıyor — yani CI,
+gerçek production deploy'un izleyeceği aynı yolu (migration dosyalarını sırayla uygulama)
+doğruluyor. Ayrıca bir drift-check adımı eklendi (`prisma migrate diff --exit-code`) — şema
+dosyası ile migration geçmişi birbirinden saparsa CI kırmızı olur.
+
+---
+
+## 📋 PLANLANAN İŞ — Ürün Yönetimi, Kategori, Satış/Alış Faturaları (2 Ağustos 2026)
+
+Kullanıcının sorduğu 3 soru üzerine yapılan envanter çıkarma sonucu:
+
+| Alan | Mevcut Durum |
+|---|---|
+| Ürünler Sayfası (ekle/düzenle/sil) | ❌ Backend'de sadece liste+ekle+stok güncelleme var; düzenleme/silme API'si yok, UI hiç yok |
+| Ürün Kategorisi | ❌ `Product.categoryId` gerçek bir ilişki değil, boş bırakılabilen düz metin alanı |
+| Satış Fatura Listesi | ⚠️ Satış çalışıyor ama geçmiş satışları listeleyen `GET /api/sales` endpoint'i / ekranı yok |
+| Alış Faturası | ❌ Şemada, route'ta, hiçbir yerde yok — sıfırdan yeni modül |
+| Tedarikçi/Müşteri Sayfası | ✅ Zaten var — Cari Hesap (Account, type=supplier/customer), bugünkü Cari Hesap panelinde tip filtresiyle yönetiliyor |
+
+### Onaylanan sıra (küçükten büyüğe, bağımlılık sırasına göre)
+
+**Faz 1 — Ürün Yönetimi + Kategori**
+- Şema: `Category.type` enum'una `product` eklenir; `Product.categoryId` gerçek bir FK ilişkisine
+  çevrilir (yeni migration).
+- Backend: `PUT /api/products/:id` (düzenleme), `PATCH /api/products/:id/deactivate` (soft-delete
+  — gerçek silme yerine, çünkü satış geçmişindeki ürünler referans bütünlüğü için silinemez).
+- Frontend: `ProductsPanel.tsx` (BackOffice'e 4. sekme) — liste, ekle, düzenle, pasife alma,
+  kategori seçici/yönetimi.
+
+**Faz 2 — Satış Fatura Listesi**
+- Backend: `GET /api/sales` (tarih aralığı/müşteri/kasiyer filtreli liste), `GET /api/sales/:id`
+  (detay).
+- Frontend: `SalesInvoicesPanel.tsx` — liste + makbuz benzeri detay görünümü.
+- Şema değişikliği gerekmiyor, en düşük riskli faz.
+
+**Faz 3 — Alış Faturası (en büyük, yeni modül)**
+- Şema: `Purchase` + `PurchaseLine` modelleri (Sale/SaleLine'ın alış yönündeki karşılığı),
+  atomik stok **artışı** (satışın tersi), tedarikçiye borçlanma.
+- **Kritik tasarım kararı**: `TransactionType` enum'una yeni bir değer eklenmeli (örn. `purchase`)
+  — mevcut `invoice` tipi yalnızca "veresiye satış" için tanımlı (`balance`'ı artırır). Tedarikçiye
+  borçlanmada ise mantık ters: `Account.balance` "bu hesabın bize borcu" anlamına geldiği için,
+  tedarikçiye borçlanmak bakiyeyi **azaltmalı/negatife çekmeli** (negatif bakiye = biz onlara
+  borçluyuz). Bu detay yanlış kurulursa cari hesap raporları hatalı olur — implementasyonda özel
+  dikkat gerekiyor.
+- Backend: `purchases.ts` route, `Purchase`/`PurchaseLine` mapper'ları, atomik `$transaction`
+  (stok artışı + tedarikçi cari hareketi + opsiyonel kasa/banka çıkışı).
+- Frontend: `PurchaseInvoicesPanel.tsx` — yeni alış faturası oluşturma (ürün seç, miktar,
+  tedarikçi, ödeme şekli) + liste/detay.
+
+Her faz kendi turunda: kod → sandbox'ta typecheck/lint/test doğrulama → kullanıcı makinesinde
+gerçek doğrulama (migration + UI testi) → CI yeşil → sonraki faza geçiş.
+
+**Şu an Faz 1'e başlanıyor.**
+
+### 🔧 Ödeme yöntemi netleştirmesi (kullanıcıdan gelen bilgi)
+
+Kullanıcı Alış/Satış ödeme yöntemlerini netleştirdi: **Satış** → Nakit/Kredi Kartı/Veresiye,
+**Alış** → Nakit/Kredi Kartı-Çek/Açık Hesap (vadeli). İnceleme sonucu: backend'in
+`PaymentMethod` enum'u (`cash|card|transfer|cheque|account`) zaten **Satış için** kredi kartını
+destekliyordu — sadece POS ekranında buton yoktu. Eklendi: `PosScreen.tsx`'e "Ödeme Al (Kredi
+Kartı)" butonu (Nakit ile Veresiye arasında). Alış Faturası (Faz 3) tasarımı da netleşti: aynı
+`PaymentMethod` enum'u yeniden kullanılacak, Çek modülündeki `own_cheque` (Kendi Çekimiz) tipi
+tam bu senaryo için zaten var.
+
+## ✅ Faz 1 TAMAMLANDI — Ürün Yönetimi + Ürün Kategorisi (2 Ağustos 2026)
+
+### Şema değişikliği (yeni migration gerekiyor — kullanıcı makinesinde çalıştırılmalı)
+
+- `CategoryType` enum'una `product` eklendi.
+- `Product.categoryId`: artık gerçek bir **foreign key** (`Category` tablosuna, `onDelete: SetNull`)
+  — önceden serbest metin alanıydı (`@default("")`), hiçbir referans bütünlüğü yoktu.
+- `Product.isActive` eklendi (`@default(true)`) — **soft-delete** için. Gerçek `DELETE` yok, çünkü
+  geçmiş satışlardaki `SaleLine.productId` referansını bozar; pasife alınan ürünler POS
+  kataloğundan düşer ama geçmiş satış/rapor verisinde bozulmadan kalır.
+- `server/prisma/seed.ts` güncellendi: ürünler artık gerçek `Category` kayıtlarına (Kahve,
+  Aksesuar, Süt Ürünleri — `type: product`) referans veriyor.
+
+### Backend
+
+- `GET /api/products?includeInactive=true` — varsayılan sadece aktif ürünler (POS kataloğu),
+  back-office `includeInactive=true` ile pasifleri de görebiliyor.
+- `PUT /api/products/:id` — tam düzenleme (sku ve stok hariç — stok sadece `/stock` endpoint'i
+  veya satış transaction'ı üzerinden değişebilir, kör bir `PUT` ile ezilmemesi için).
+- `PATCH /api/products/:id/deactivate` / `/activate` — soft-delete.
+- `categories.ts` route + `finance.ts` şeması: `type` filtresine/create'e `product` eklendi.
+
+### Frontend
+
+- `packages/ui/src/BackOffice/ProductsPanel.tsx` — liste (arama, aktif/pasif filtre), ekle,
+  düzenle, pasife al/aktifleştir, ürün kategorisi hızlı ekleme. BackOffice'e 4. sekme
+  ("📦 Ürünler") olarak eklendi.
+- `packages/core`: `productsApi`'ye `createProduct`/`updateProduct`/`activateProduct`/
+  `deactivateProduct`/`adjustStock` eklendi (önceden sadece `listProducts` vardı — backend
+  hazır olmasına rağmen client'ta hiç kullanılmıyordu).
+
+### ✅ Bu sandbox'ta doğrulanan
+
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+test (core+server, mocklu Prisma): 67/67 PASS — regresyon yok
+build (web): PASS
+```
+
+### 📋 Kullanıcının yapması gereken (önemli — şema değişti)
+
+```powershell
+cd server
+pnpm exec prisma generate
+pnpm exec prisma migrate dev --name add_product_category_and_isactive
+pnpm db:seed   # seed.ts güncellendi, kategoriler + ürünler yeniden yüklenmeli
+cd ..
+pnpm dev
+```
+
+Sonra "Yönetim Paneli" → "📦 Ürünler" sekmesini ve POS'taki yeni "Ödeme Al (Kredi Kartı)"
+butonunu test etmesi gerekiyor.

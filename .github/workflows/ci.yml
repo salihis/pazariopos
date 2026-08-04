@@ -1,4 +1,28 @@
-﻿name: CI
+name: CI
+
+# ─────────────────────────────────────────────────────────────
+# This is the first CI pipeline for the project (CHECKLIST.md
+# "CI/CD (GitHub Actions)" item). Scope, deliberately:
+#
+#   ✅ lint, typecheck, unit tests (packages/core + server, mocked
+#      Prisma), e2e (Playwright, mocked backend) — all of this was
+#      already written and verified locally/in a sandbox that could
+#      NOT reach binaries.prisma.sh or playwright's browser CDN.
+#      GitHub-hosted runners have full internet access, so this is
+#      the first place these actually run for real.
+#   ✅ db-schema job: spins up a real Postgres service and runs
+#      `prisma generate` + `prisma migrate deploy` + a drift check
+#      against it. This closes the "real Postgres" gap the sandbox
+#      could never verify. A real migration history now exists
+#      (server/prisma/migrations/, created via `prisma migrate dev
+#      --name init`), so this proves both the schema AND the migration
+#      files apply cleanly — the same path a real production deploy
+#      would take.
+#   ❌ apps/desktop (Tauri) build — needs Rust + native GTK/WebKit
+#      toolchains and is a meaningfully bigger CI job (cross-platform
+#      installer builds). Left for a dedicated follow-up, not bundled
+#      in here to keep this pipeline fast and easy to reason about.
+# ─────────────────────────────────────────────────────────────
 
 on:
   push:
@@ -11,6 +35,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Real Prisma engine downloads work fine here (unlike the sandbox this
+  # was developed in) — no special PRISMA_ENGINES_* overrides needed.
   TURBO_TELEMETRY_DISABLED: 1
 
 jobs:
@@ -19,20 +45,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # pnpm blocks dependency postinstall scripts by default unless
+      # explicitly allowlisted, so @prisma/client's own postinstall
+      # (which normally runs `prisma generate`) does NOT run automatically
+      # here. Without this, `tsc` has no real generated types to check
+      # against and every Prisma-touching file fails with "has no exported
+      # member 'PrismaClient'" etc. A DATABASE_URL isn't needed just to
+      # generate the client (only to connect to one).
       - name: Generate Prisma Client
         working-directory: server
         run: pnpm exec prisma generate
+
       - name: Lint
         run: pnpm turbo run lint
+
       - name: Typecheck
         run: pnpm turbo run typecheck
 
@@ -41,20 +80,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Generate Prisma Client
         working-directory: server
         run: pnpm exec prisma generate
+
       - name: Run unit tests (packages/core, server — mocked Prisma)
         run: pnpm turbo run test
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -87,21 +132,31 @@ jobs:
       DATABASE_URL: postgresql://pos_user:pos_password@localhost:5432/pos_erp?schema=public
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Validate schema.prisma
         working-directory: server
         run: pnpm exec prisma validate
+
+      # Real migration history now exists (server/prisma/migrations/,
+      # created via `prisma migrate dev --name init`) — apply it the
+      # same way production deploys would, proving the migrations
+      # themselves (not just the current schema) are sound.
       - name: Apply migrations to a fresh database
         working-directory: server
         run: pnpm exec prisma migrate deploy
+
       - name: Fail if schema.prisma and the migration history have drifted
         working-directory: server
         run: pnpm exec prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
@@ -111,20 +166,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Install Playwright browsers
         working-directory: apps/web
         run: pnpm exec playwright install --with-deps chromium
+
       - name: Run e2e tests
         run: pnpm test:e2e
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
@@ -140,17 +201,22 @@ jobs:
     needs: [lint-and-typecheck, unit-tests]
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.7.0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
       - name: Generate Prisma Client
         working-directory: server
         run: pnpm exec prisma generate
+
       - name: Build web + server
         run: pnpm turbo run build --filter=@pazariopos/web --filter=@pazariopos/server

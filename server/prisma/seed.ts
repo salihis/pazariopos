@@ -49,6 +49,25 @@ async function main() {
   })
   console.log('Seeded account:', secondAccount)
 
+  const productCategories = {
+    coffee: await prisma.category.upsert({
+      where: { id: 'cat-coffee' },
+      update: {},
+      create: { id: 'cat-coffee', name: 'Kahve', type: 'product' },
+    }),
+    accessories: await prisma.category.upsert({
+      where: { id: 'cat-accessories' },
+      update: {},
+      create: { id: 'cat-accessories', name: 'Aksesuar', type: 'product' },
+    }),
+    dairy: await prisma.category.upsert({
+      where: { id: 'cat-dairy' },
+      update: {},
+      create: { id: 'cat-dairy', name: 'Süt Ürünleri', type: 'product' },
+    }),
+  }
+  console.log('Seeded product categories:', Object.values(productCategories).map(c => c.name).join(', '))
+
   const products = [
     {
       sku: 'SKU-001',
@@ -59,7 +78,7 @@ async function main() {
       stock: 42,
       lowStockThreshold: 10,
       unit: 'piece' as const,
-      categoryId: 'coffee',
+      categoryId: productCategories.coffee.id,
     },
     {
       sku: 'SKU-002',
@@ -70,7 +89,7 @@ async function main() {
       stock: 3,              // deliberately below threshold — demonstrates the low-stock badge
       lowStockThreshold: 5,
       unit: 'piece' as const,
-      categoryId: 'accessories',
+      categoryId: productCategories.accessories.id,
     },
     {
       sku: 'SKU-003',
@@ -81,7 +100,7 @@ async function main() {
       stock: 60,
       lowStockThreshold: 15,
       unit: 'piece' as const,
-      categoryId: 'dairy',
+      categoryId: productCategories.dairy.id,
     },
   ]
 

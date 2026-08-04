@@ -44,13 +44,17 @@ model Product {
   lowStockThreshold Int          @default(0) @map("low_stock_threshold")
   unit              ProductUnit  @default(piece)
 
-  categoryId  String @default("") @map("category_id")
-  warehouseId String @default("default") @map("warehouse_id")
+  categoryId  String?      @map("category_id")
+  warehouseId String       @default("default") @map("warehouse_id")
+  isActive    Boolean      @default(true) @map("is_active")
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([warehouseId])
+  @@index([categoryId])
   @@map("products")
 }
 
@@ -246,6 +250,7 @@ model AccountTransactionMatch {
 enum CategoryType {
   income
   expense
+  product
 }
 
 // Self-referencing tree — "Gelir/Gider kategori ağacı". Kept flat/simple
@@ -258,6 +263,7 @@ model Category {
 
   parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[]  @relation("CategoryHierarchy")
+  products Product[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

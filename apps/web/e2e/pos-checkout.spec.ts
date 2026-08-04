@@ -22,6 +22,7 @@ const PRODUCT = {
   lowStockThreshold: 5,
   unit: 'piece',
   categoryId: 'cat-1',
+  isActive: true,
   warehouseId: 'wh-1',
 }
 

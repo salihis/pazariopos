@@ -183,7 +183,7 @@ export function PosScreen() {
   }, [customerId, paymentAmountInput, recordPayment])
 
   // ── Checkout ─────────────────────────────────────────────
-  const handleCheckout = useCallback(async (method: 'cash' | 'account') => {
+  const handleCheckout = useCallback(async (method: 'cash' | 'card' | 'account') => {
     if (cart.length === 0) return
     if (method === 'account' && !customerId) return
 
@@ -196,7 +196,7 @@ export function PosScreen() {
       const printResult = await printer.printReceipt(outcome.sale)
       const receiptStatus = printResult.success ? 'yazdırıldı' : (printResult.errorMessage ?? 'yazdırma hatası')
 
-      const methodLabel = method === 'account' ? 'veresiye (cari hesaba)' : 'nakit'
+      const methodLabel = method === 'account' ? 'veresiye (cari hesaba)' : method === 'card' ? 'kredi kartı' : 'nakit'
       setLastReceiptStatus(
         outcome.mode === 'online'
           ? `Satış çevrimiçi tamamlandı (${methodLabel}). Fiş: ${receiptStatus}`
@@ -493,6 +493,14 @@ export function PosScreen() {
               onClick={() => handleCheckout('cash')}
             >
               Ödeme Al (Nakit)
+            </button>
+
+            <button
+              className="mt-2 w-full rounded-lg border border-[var(--color-petrol)] py-2.5 text-sm font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-petrol)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={cart.length === 0}
+              onClick={() => handleCheckout('card')}
+            >
+              Ödeme Al (Kredi Kartı)
             </button>
 
             <button

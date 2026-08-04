@@ -15,8 +15,9 @@ import { useFinanceStore, useAccountStore } from '@pazariopos/core'
 import { CashRegisterPanel } from './CashRegisterPanel'
 import { AccountsPanel } from './AccountsPanel'
 import { FinancePanel } from './FinancePanel'
+import { ProductsPanel } from './ProductsPanel'
 
-type Tab = 'cash' | 'accounts' | 'finance'
+type Tab = 'cash' | 'accounts' | 'finance' | 'products'
 
 export function BackOfficeScreen() {
   const [tab, setTab] = useState<Tab>('cash')
@@ -37,11 +38,13 @@ export function BackOfficeScreen() {
         <TabButton active={tab === 'cash'} onClick={() => setTab('cash')}>💰 Kasa</TabButton>
         <TabButton active={tab === 'accounts'} onClick={() => setTab('accounts')}>📒 Cari Hesap</TabButton>
         <TabButton active={tab === 'finance'} onClick={() => setTab('finance')}>🏦 Finans</TabButton>
+        <TabButton active={tab === 'products'} onClick={() => setTab('products')}>📦 Ürünler</TabButton>
       </div>
 
       {tab === 'cash' && <CashRegisterPanel />}
       {tab === 'accounts' && <AccountsPanel />}
       {tab === 'finance' && <FinancePanel />}
+      {tab === 'products' && <ProductsPanel />}
     </div>
   )
 }

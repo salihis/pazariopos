@@ -21,8 +21,9 @@ const productSchema = z.object({
   stock: z.number(),
   lowStockThreshold: z.number(),
   unit: z.enum(['piece', 'box', 'kg', 'lt']),
-  categoryId: z.string(),
+  categoryId: z.string().nullable(),
   warehouseId: z.string(),
+  isActive: z.boolean(),
 })
 
 const cartLineSchema = z.object({

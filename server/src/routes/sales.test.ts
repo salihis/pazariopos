@@ -41,6 +41,7 @@ function product(overrides: Partial<Record<string, unknown>> = {}) {
     lowStockThreshold: 5,
     unit: 'piece',
     categoryId: 'cat-1',
+    isActive: true,
     warehouseId: 'wh-1',
     ...overrides,
   }

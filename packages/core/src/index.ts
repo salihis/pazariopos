@@ -39,7 +39,7 @@ export {
   authApi, usersApi,
   ApiError, setApiBaseUrl, setAuthToken,
 } from './api/salesApi'
-export type { CreateAccountInput, CreateCategoryInput, CreateChequeInput, CreateUserInput } from './api/salesApi'
+export type { CreateAccountInput, CreateCategoryInput, CreateChequeInput, CreateUserInput, CreateProductInput, UpdateProductInput } from './api/salesApi'
 
 // Stores
 export { useSaleStore } from './store/useSaleStore'

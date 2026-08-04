@@ -12,7 +12,7 @@ function product(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: 'prod-1', sku: 'SKU-1', name: 'Ekmek', barcode: ['1111'],
     price: 1000, taxRate: 0.18, stock: 50, lowStockThreshold: 5,
-    unit: 'piece', categoryId: 'cat-1', warehouseId: 'wh-1',
+    unit: 'piece', categoryId: 'cat-1', warehouseId: 'wh-1', isActive: true,
     ...overrides,
   }
 }

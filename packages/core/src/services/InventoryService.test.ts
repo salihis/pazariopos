@@ -20,6 +20,7 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   lowStockThreshold: 2,
   unit: 'piece',
   categoryId: 'cat-1',
+  isActive: true,
   warehouseId: 'wh-1',
   ...overrides,
 })

@@ -13,7 +13,7 @@ import { createCategorySchema } from '../schemas/finance'
 import { toDomainCategory } from '../mappers/financeMapper'
 
 const listQuerySchema = z.object({
-  type: z.enum(['income', 'expense']).optional(),
+  type: z.enum(['income', 'expense', 'product']).optional(),
 })
 
 export const categoriesRoutes: FastifyPluginAsync = async (app) => {

@@ -15,8 +15,9 @@ export interface Product {
   stock: number
   lowStockThreshold: number   // stock at/below this triggers a low-stock warning
   unit: 'piece' | 'box' | 'kg' | 'lt'
-  categoryId: string
+  categoryId: string | null
   warehouseId: string
+  isActive: boolean
 }
 
 export interface CartLine {
@@ -149,7 +150,7 @@ export interface AgingReport {
 // cheques, reports). Phase 4-5 (budget/dashboard, CSV/OFX bank
 // statement import) are out of scope — see CHECKLIST.md.
 
-export type CategoryType = 'income' | 'expense'
+export type CategoryType = 'income' | 'expense' | 'product'
 
 export interface Category {
   id: string

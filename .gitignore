@@ -46,3 +46,9 @@ pnpm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Stray screenshot/clipboard files that have ended up at the repo root
+# during manual testing — not project assets.
+/*.jpg
+/*.jpeg
+/*.png

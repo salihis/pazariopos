@@ -16,8 +16,9 @@ import { CashRegisterPanel } from './CashRegisterPanel'
 import { AccountsPanel } from './AccountsPanel'
 import { FinancePanel } from './FinancePanel'
 import { ProductsPanel } from './ProductsPanel'
+import { PurchaseInvoicePanel } from './PurchaseInvoicePanel'
 
-type Tab = 'cash' | 'accounts' | 'finance' | 'products'
+type Tab = 'cash' | 'accounts' | 'finance' | 'products' | 'purchases'
 
 export function BackOfficeScreen() {
   const [tab, setTab] = useState<Tab>('cash')
@@ -39,12 +40,14 @@ export function BackOfficeScreen() {
         <TabButton active={tab === 'accounts'} onClick={() => setTab('accounts')}>📒 Cari Hesap</TabButton>
         <TabButton active={tab === 'finance'} onClick={() => setTab('finance')}>🏦 Finans</TabButton>
         <TabButton active={tab === 'products'} onClick={() => setTab('products')}>📦 Ürünler</TabButton>
+        <TabButton active={tab === 'purchases'} onClick={() => setTab('purchases')}>🧾 Alış Faturası</TabButton>
       </div>
 
       {tab === 'cash' && <CashRegisterPanel />}
       {tab === 'accounts' && <AccountsPanel />}
       {tab === 'finance' && <FinancePanel />}
       {tab === 'products' && <ProductsPanel />}
+      {tab === 'purchases' && <PurchaseInvoicePanel />}
     </div>
   )
 }

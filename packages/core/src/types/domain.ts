@@ -72,6 +72,43 @@ export interface Sale {
   syncedAt?: string | null
 }
 
+// ── Alış Faturası / Purchase Invoice ────────────────────────────
+// Mirror of Sale, in the opposite direction: increases stock, and an
+// 'account' payment posts to the SUPPLIER's ledger (decreases their
+// Account.balance — see server's TransactionType.purchase comment).
+// No offline-queue fields (localId/deviceId/syncStatus): purchases
+// are created online-only at a desk, unlike POS sales.
+
+export interface PurchaseLine {
+  productId: string
+  productName: string   // denormalized snapshot at time of purchase
+  quantity: number
+  unitCost: number       // per-unit, KDV dahil (tax-inclusive)
+  discountAmount: number // TOTAL for this line (not per-unit)
+  taxAmount: number      // TOTAL tax for this line (not per-unit)
+  total: number
+}
+
+export interface Purchase {
+  id: string
+  invoiceNumber: string | null
+  supplierId: string | null   // null = "Firmasız"
+  warehouseId: string
+  userId: string
+
+  lines: PurchaseLine[]
+  payments: PaymentLine[]
+
+  subtotal: number
+  discountTotal: number
+  taxTotal: number
+  grandTotal: number
+
+  invoiceDate: string   // ISO-8601
+  createdAt: string
+  updatedAt: string
+}
+
 // ── Report ───────────────────────────────────────────────────
 
 export interface ReportData {

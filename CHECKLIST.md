@@ -1725,3 +1725,103 @@ pnpm db:seed
 cd ..
 pnpm dev
 ```
+
+### 🐛 Bilinen hata — ertelendi (kullanıcı onayıyla, 2 Ağustos 2026)
+
+**`AccountsPanel.tsx`'de tedarikçi hesabında "Ödeme Al" gösteriliyor, olması gereken "Ödeme Yap".**
+Kullanıcı ekran görüntüsüyle bildirdi: `BETA DAĞITIM` (Tedarikçi) hesabında "Ödeme Al" butonu var
+— ama tedarikçiye biz öderiz, ondan tahsilat yapmayız. Şu an panel, hesap tipinden bağımsız tek
+bir genel ödeme akışı kullanıyor.
+
+**Neden şimdi değil**: Bu, Faz 3 (Alış Faturası) planındaki "cari hesap bakiye yönü" tasarım
+kararıyla (bkz. yukarıdaki not: `Account.balance` = "bu hesabın bize borcu", tedarikçiye
+borçlanma negatif bakiye anlamına gelmeli) birebir aynı kök konu. İkisini ayrı ayrı yamamak
+yerine, Faz 3'te birlikte, doğru bir tasarımla (müşteri: "Ödeme Al" → bakiye azalır; tedarikçi:
+"Ödeme Yap" → bakiye [negatiften sıfıra doğru] artar) çözülecek. **Kullanıcı onayıyla erteledi.**
+
+### ✅ Faz 1 — GERÇEKTEN UÇTAN UCA DOĞRULANDI (2 Ağustos 2026)
+
+Kullanıcının makinesinde (Docker Postgres + gerçek migration'lar) VE GitHub Actions CI'da
+(5/5 job yeşil, `db-schema` job'ı iki yeni migration'ı — `add_product_category_and_isactive`
+ve `product_management_fields` — gerçek Postgres'e uyguladı) doğrulandı.
+
+**Yol boyunca bulunan/çözülen küçük sorun**: migration'lar local'de çalıştırılmış ama commit'e
+hiç girmemişti (untracked kalmış) — muhtemelen komut sırası karışmış (migrate → commit yerine
+commit → migrate). Ayrıca proje köküne yanlışlıkla birkaç ekran görüntüsü dosyası kaydedilmiş
+(`URUNEKLEME.jpg` vb.) — temizlendi. `git status` ile netleştirilip düzeltildi.
+
+**FAZ 1 TAMAMLANDI. Sırada Faz 2: Satış Fatura Listesi.**
+
+## ✅ Faz 3 — Alış Faturası (2 Ağustos 2026)
+
+Kullanıcının mockup'ına (ALISFATOLUS.jpg) göre, kapsamı MVP'ye göre daraltarak (Excel import,
+çoklu iskonto katmanı, çoklu şube fiyat senkronu hariç — kullanıcı onayıyla) inşa edildi.
+
+### Şema (yeni migration gerekiyor)
+
+- `TransactionType` enum'una `purchase` eklendi — tedarikçiye borçlanmayı temsil eder,
+  `invoice`'in ayna görüntüsü: **bakiyeyi azaltır** (biz onlara daha çok borçlanırız), artırmaz.
+- Yeni modeller: `Purchase`, `PurchaseLine`, `PurchasePayment` (Sale/SaleLine/SalePayment'ın
+  ayna görüntüsü — stok artışı, tersine ödeme akışı).
+- `AccountTransaction`/`CashMovement`'a `referencePurchaseId` eklendi (izlenebilirlik).
+- `Account`'a ters ilişki: `purchases Purchase[]`.
+
+### ⚠️ Yol boyunca bulunan gerçek bir hata — düzeltilmedi, sadece belgelendi
+
+`accounts.ts`'deki genel `/accounts/:id/payment` endpoint'i **her zaman negatif tutarla**
+(`amount: -amount`) hareket kaydediyor — bu sadece müşteri/çalışan/diğer hesaplar için doğru
+(pozitif bakiye = bize borçlu). **Tedarikçi hesabında** (negatif bakiye = biz onlara borçluyuz)
+bu endpoint'i kullanmak bakiyeyi YANLIŞ yöne (daha da negatife) götürür. Bu, kullanıcının daha
+önce ekran görüntüsüyle bildirdiği "tedarikçide Ödeme Al" hatasıyla **aynı kök neden** —
+kullanıcı onayıyla ayrı bırakıldı. Yeni `purchase` işlem tipi bundan etkilenmiyor (tek yönlü
+"fatura geldi" kaydı, bir ödeme kapatma işlemi değil).
+
+### Backend
+
+- `server/src/routes/purchases.ts` — `sales.ts`'in ayna görüntüsü:
+  - `POST /api/purchases`: stok artışı + (varsa) tedarikçi cari hesabına **negatif** tutarla
+    borç kaydı + (nakitse) kasadan **çıkış** — hepsi TEK `$transaction` içinde
+  - Her satırda `Product.costPrice` otomatik güncelleniyor (en son alış fiyatı = yeni referans
+    alış fiyatı — mockup'taki "Alış fiyatı değişikliğini kontrol et" niyetiyle uyumlu)
+  - `GET /api/purchases` (liste, tedarikçi filtresi) + `GET /api/purchases/:id` (detay)
+  - Offline-queue/idempotency YOK (satıştan farklı olarak, alış faturaları her zaman
+    online, masabaşı bir işlem — kapsam dışı bırakıldı, bilinçli karar)
+- `server/src/schemas/purchase.ts`, `server/src/mappers/purchaseMapper.ts`
+
+### Frontend
+
+- `packages/ui/src/BackOffice/PurchaseInvoicePanel.tsx` — mockup'a göre: Fatura No (+Rastgele
+  Üret), Fatura Tarihi, Firma (tedarikçi dropdown + Firmasız), Ödeme Tipi (Nakit/Kredi
+  Kartı/Çek/Açık Hesap); satır bazında: Barkod ara (Enter'da eşleşme, bulunamazsa "Yeni ürün adı"
+  ile hızlı ürün oluşturma), Satış Fiyatı/Stok (referans, salt okunur), Miktar, Birim Fiyat +
+  KDV Dahil checkbox, İskonto %, KDV %, satır Tutarı; canlı toplamlar (Toplam Ürün/Miktar, Brüt
+  Toplam, İskonto tutarı, Ara toplam, KDV tutarı, Genel Toplam). Alış fiyatı ürünün mevcut
+  `costPrice`'ından farklıysa satırda ⚠ uyarısı gösteriliyor.
+- BackOffice'e 5. sekme: "🧾 Alış Faturası"
+- `packages/core`: `purchasesApi` (createPurchase/listPurchases/getPurchase) eklendi
+
+### ✅ Bu sandbox'ta doğrulanan
+
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+test (core+server): 81/81 PASS (server: 48, +14 yeni purchases.test.ts — atomik işlem,
+  çoklu satır stok artışı, tedarikçi cari hesabı NEGATİF yönde, kasa ÇIKIŞI, eksik
+  tedarikçi/kasa hataları, 401/403/400 — hepsi mocklu Prisma ile doğrulandı)
+build (web): PASS
+```
+
+### 📋 Kullanıcının yapması gereken
+
+```powershell
+cd server
+pnpm exec prisma generate
+pnpm exec prisma migrate dev --name add_purchase_invoices
+cd ..
+pnpm dev
+```
+
+Sonra "Alış Faturası" sekmesinden bir test faturası oluşturup: (1) stoğun arttığını (Ürünler
+sekmesinde), (2) Açık Hesap seçilirse tedarikçi cari hesabının **negatife düştüğünü** (Cari
+Hesap sekmesinde), (3) Nakit seçilirse kasa bakiyesinin azaldığını (Kasa sekmesinde) doğrulaması
+gerekiyor.

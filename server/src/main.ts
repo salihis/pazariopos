@@ -17,6 +17,7 @@ import { authRoutes }          from './routes/auth'
 import { usersRoutes }         from './routes/users'
 import { healthRoutes }        from './routes/health'
 import { salesRoutes }         from './routes/sales'
+import { purchasesRoutes }     from './routes/purchases'
 import { accountsRoutes }      from './routes/accounts'
 import { productsRoutes }      from './routes/products'
 import { categoriesRoutes }    from './routes/categories'
@@ -58,6 +59,7 @@ async function buildServer() {
   await app.register(usersRoutes,         { prefix: '/api/users' })
   await app.register(healthRoutes,        { prefix: '/api/health' })
   await app.register(salesRoutes,         { prefix: '/api/sales' })
+  await app.register(purchasesRoutes,     { prefix: '/api/purchases' })
   await app.register(accountsRoutes,      { prefix: '/api/accounts' })
   await app.register(productsRoutes,      { prefix: '/api/products' })
   await app.register(categoriesRoutes,    { prefix: '/api/categories' })

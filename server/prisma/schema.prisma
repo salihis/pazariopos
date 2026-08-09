@@ -143,6 +143,74 @@ model SalePayment {
   @@map("sale_payments")
 }
 
+// ── Alış Faturası / Purchase Invoices — mirror of Sale/SaleLine/
+// SalePayment above, in the opposite direction: stock INCREASES,
+// and an 'account' payment posts to the SUPPLIER's ledger as a
+// `purchase` transaction (decreases Account.balance — see
+// TransactionType.purchase comment above for the sign rationale). ──
+
+model Purchase {
+  id            String @id @default(uuid())
+  invoiceNumber String? @map("invoice_number")
+  supplierId    String? @map("supplier_id") // nullable — "Firmasız" (no company) is valid
+  warehouseId   String  @default("default") @map("warehouse_id")
+  userId        String  @map("user_id")     // who recorded this invoice
+
+  subtotal      Int
+  discountTotal Int @map("discount_total")
+  taxTotal      Int @map("tax_total")
+  grandTotal    Int @map("grand_total")
+
+  invoiceDate DateTime @map("invoice_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  supplier Account? @relation(fields: [supplierId], references: [id])
+  lines    PurchaseLine[]
+  payments PurchasePayment[]
+
+  @@index([supplierId])
+  @@index([createdAt])
+  @@map("purchases")
+}
+
+model PurchaseLine {
+  id         String @id @default(uuid())
+  purchaseId String @map("purchase_id")
+
+  productId   String @map("product_id")
+  productName String @map("product_name") // denormalized snapshot, same rationale as SaleLine
+
+  quantity       Int
+  unitCost       Int @map("unit_cost")       // per-unit, KDV dahil (gross)
+  discountAmount Int @map("discount_amount") // TOTAL for this line (not per-unit — unlike
+                                              // SaleLine, nothing needs to reconstruct a rate
+                                              // from this later, so the simpler total-based
+                                              // convention is used instead)
+  taxAmount      Int @map("tax_amount")      // TOTAL tax for this line (same reasoning)
+  total          Int
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_lines")
+}
+
+model PurchasePayment {
+  id         String @id @default(uuid())
+  purchaseId String @map("purchase_id")
+
+  method    String // 'cash' | 'card' | 'transfer' | 'cheque' | 'account'
+  amount    Int
+  reference String?
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseId])
+  @@map("purchase_payments")
+}
+
 // ── Cari Hesap / Accounts Receivable-Payable (Phase 1-3 — see
 // POS_ERP_Sistem_Prompt.md §5 for full long-term scope; Phase 4-5
 // (PDF statements, FX, bulk SMS/email) are explicitly out of scope
@@ -157,8 +225,21 @@ enum AccountType {
 
 enum TransactionType {
   invoice    // sale posted to account ("veresiye") — increases balance
-  payment    // customer paid down their balance — decreases balance
+  payment    // balance paid down — decreases balance. NOTE: accounts.ts's
+             // /accounts/:id/payment endpoint currently always posts this
+             // with a NEGATIVE amount, which is only correct for
+             // customer/employee/other accounts (positive balance = they
+             // owe us). For a supplier (negative balance = we owe them),
+             // "paying them down" should INCREASE balance instead — this
+             // is the same direction bug already deferred for
+             // AccountsPanel's "Ödeme Al" button (see CHECKLIST.md). The
+             // new `purchase` type below is unaffected by this — it's a
+             // one-way "invoice received" posting, not a payoff.
   return     // sale return credited to account — decreases balance
+  purchase   // supplier invoice posted to account ("açık hesap alış") — DECREASES
+             // balance. Mirror-image of `invoice`: Account.balance is always "what this
+             // counterparty owes us, net" regardless of type — for a supplier that's
+             // normally negative (we owe THEM), so billing us more makes it more negative.
   transfer   // manual balance transfer between accounts
   interest   // late-payment interest (Phase 3)
   fx_diff    // period-end FX difference (Phase 5 — not implemented yet)
@@ -184,6 +265,7 @@ model Account {
                              // recomputed by summing the ledger on read
 
   transactions AccountTransaction[]
+  purchases    Purchase[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -203,9 +285,10 @@ model AccountTransaction {
   // invoices, decreases as payments get matched against it. 0 = fully settled.
   openAmount Int @default(0) @map("open_amount")
 
-  referenceSaleId String?   @map("reference_sale_id")
-  description     String    @default("")
-  dueDate         DateTime? @map("due_date")   // set on invoice-type transactions
+  referenceSaleId     String?   @map("reference_sale_id")
+  referencePurchaseId String?   @map("reference_purchase_id")
+  description         String    @default("")
+  dueDate             DateTime? @map("due_date")   // set on invoice-type transactions
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -300,10 +383,11 @@ model CashMovement {
   categoryId     String?      @map("category_id")
 
   // Set when this movement was posted automatically by a cash sale
-  // (routes/sales.ts) rather than entered manually — lets the ledger
-  // distinguish "POS cash sales" from "manual kasa hareketi" entries.
-  referenceSaleId String? @map("reference_sale_id")
-  description     String  @default("")
+  // (routes/sales.ts) or a cash-paid purchase invoice (routes/purchases.ts)
+  // rather than entered manually.
+  referenceSaleId     String? @map("reference_sale_id")
+  referencePurchaseId String? @map("reference_purchase_id")
+  description         String  @default("")
 
   createdAt DateTime @default(now()) @map("created_at")
 

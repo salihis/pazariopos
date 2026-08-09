@@ -8,7 +8,7 @@
 import type {
   Sale, Product, Account, AccountTransaction, AgingReport,
   Category, CashRegister, CashMovement, CashCount, BankAccount, BankTransaction, Cheque,
-  CashFlowReport, IncomeExpenseReport, ProfitLossReport, User,
+  CashFlowReport, IncomeExpenseReport, ProfitLossReport, User, Purchase, PaymentLine,
 } from '../types/domain'
 
 // packages/core must stay platform-agnostic (see CODING_GUIDELINES.md §2) —
@@ -301,6 +301,40 @@ export const chequesApi = {
   },
   updateStatus(id: string, status: Cheque['status']): Promise<Cheque> {
     return request<Cheque>(`/api/cheques/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) })
+  },
+}
+
+export type CreatePurchaseInput = {
+  invoiceNumber?: string
+  supplierId?: string | null
+  warehouseId?: string
+  invoiceDate: string
+  lines: Array<{
+    productId: string
+    productName: string
+    quantity: number
+    unitCost: number
+    discountAmount: number
+    taxAmount: number
+    total: number
+  }>
+  payments: PaymentLine[]
+  subtotal: number
+  discountTotal: number
+  taxTotal: number
+  grandTotal: number
+}
+
+export const purchasesApi = {
+  listPurchases(supplierId?: string): Promise<Purchase[]> {
+    const query = supplierId ? `?supplierId=${encodeURIComponent(supplierId)}` : ''
+    return request<Purchase[]>(`/api/purchases${query}`)
+  },
+  getPurchase(id: string): Promise<Purchase> {
+    return request<Purchase>(`/api/purchases/${id}`)
+  },
+  createPurchase(input: CreatePurchaseInput): Promise<Purchase> {
+    return request<Purchase>('/api/purchases', { method: 'POST', body: JSON.stringify(input) })
   },
 }
 

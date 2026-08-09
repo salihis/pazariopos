@@ -23,6 +23,7 @@ const TX_TYPE_LABELS: Record<string, string> = {
   invoice: 'Veresiye Satış',
   payment: 'Ödeme',
   return: 'İade',
+  purchase: 'Alış Faturası',
   transfer: 'Transfer',
   interest: 'Gecikme Faizi',
   fx_diff: 'Kur Farkı',

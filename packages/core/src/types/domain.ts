@@ -150,8 +150,11 @@ export interface Account {
 
 export type AccountTransactionType =
   | 'invoice'   // sale posted to account ("veresiye") — increases balance
-  | 'payment'   // customer paid down their balance — decreases balance
+  | 'payment'   // balance paid down — decreases balance (see schema.prisma's
+                // TransactionType.payment comment on the current customer-only sign bug)
   | 'return'    // sale return credited to account — decreases balance
+  | 'purchase'  // supplier invoice posted to account ("açık hesap alış") —
+                // DECREASES balance (mirror of 'invoice', opposite direction)
   | 'transfer'  // manual balance transfer between accounts
   | 'interest'  // late-payment interest (Phase 3)
   | 'fx_diff'   // period-end FX difference (Phase 5 — not implemented)
@@ -163,6 +166,7 @@ export interface AccountTransaction {
   amount: number        // positive = debit (increases balance), negative = credit
   openAmount: number     // remaining unmatched amount (Phase 2 open-item matching)
   referenceSaleId?: string
+  referencePurchaseId?: string
   description: string
   dueDate?: string | null
   createdAt: string
@@ -216,6 +220,7 @@ export interface CashMovement {
   amount: number
   categoryId?: string | null
   referenceSaleId?: string | null
+  referencePurchaseId?: string | null
   description: string
   createdAt: string
 }

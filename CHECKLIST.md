@@ -1825,3 +1825,13 @@ Sonra "Alış Faturası" sekmesinden bir test faturası oluşturup: (1) stoğun 
 sekmesinde), (2) Açık Hesap seçilirse tedarikçi cari hesabının **negatife düştüğünü** (Cari
 Hesap sekmesinde), (3) Nakit seçilirse kasa bakiyesinin azaldığını (Kasa sekmesinde) doğrulaması
 gerekiyor.
+
+### ✅ Faz 3 — KULLANICI MAKİNESİNDE DOĞRULANDI (2 Ağustos 2026)
+
+Kullanıcı gerçek bir Alış Faturası oluşturdu, Açık Hesap (vadeli) ile bir tedarikçi seçti:
+- ✅ Ürün stoğu arttı (Ürünler sekmesinde görüldü)
+- ✅ **Tedarikçi cari hesap bakiyesi NEGATİFE düştü** (doğru yön — en kritik tasarım kararı
+  doğrulandı: `Account.balance` = "bu hesabın bize borcu", tedarikçiye borçlanmak bakiyeyi
+  azaltıyor, tıpkı planlandığı gibi)
+
+**FAZ 3 TAMAMLANDI VE DOĞRULANDI.** Henüz commit/push edilmedi.

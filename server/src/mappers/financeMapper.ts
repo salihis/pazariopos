@@ -47,6 +47,7 @@ export function toDomainCashMovement(row: PrismaCashMovement): CashMovement {
     amount: row.amount,
     categoryId: row.categoryId,
     referenceSaleId: row.referenceSaleId,
+    referencePurchaseId: row.referencePurchaseId,
     description: row.description,
     createdAt: row.createdAt.toISOString(),
   }

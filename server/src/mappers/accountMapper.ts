@@ -36,6 +36,7 @@ export function toDomainAccountTransaction(row: PrismaAccountTransaction): Accou
     amount: row.amount,
     openAmount: row.openAmount,
     referenceSaleId: row.referenceSaleId ?? undefined,
+    referencePurchaseId: row.referencePurchaseId ?? undefined,
     description: row.description,
     dueDate: row.dueDate ? row.dueDate.toISOString() : null,
     createdAt: row.createdAt.toISOString(),

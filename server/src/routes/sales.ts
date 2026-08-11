@@ -23,6 +23,7 @@
 
 import type { FastifyPluginAsync } from 'fastify'
 import { Prisma } from '@prisma/client'
+import { z } from 'zod'
 
 import { prisma } from '../db/prisma'
 import { saleSchema } from '../schemas/sale'
@@ -198,8 +199,52 @@ async function upsertSaleByLocalId(input: ReturnType<typeof saleSchema.parse>) {
 }
 
 export const salesRoutes: FastifyPluginAsync = async (app) => {
-  // ── POST /api/sales — direct online submission ──
   const SALE_CREATOR_ROLES = ['admin', 'accountant', 'cashier', 'warehouse']
+
+  // ── GET /api/sales — list, for the "Satış Fatura Listesi" back-office
+  // screen. Filterable by date range, customer, and cashier; capped at
+  // 500 rows (this is a browsing/reporting list, not a full export —
+  // see reportsApi for aggregate figures over larger ranges). ──
+  const listQuerySchema = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    customerId: z.string().optional(),
+    cashierId: z.string().optional(),
+  })
+
+  app.get('/', { preHandler: [app.authenticate, app.requireRole(...SALE_CREATOR_ROLES)] }, async (req, reply) => {
+    const queryResult = listQuerySchema.safeParse(req.query)
+    if (!queryResult.success) {
+      return reply.code(400).send({ error: 'ValidationError', issues: queryResult.error.issues })
+    }
+    const { from, to, customerId, cashierId } = queryResult.data
+
+    const rows = await prisma.sale.findMany({
+      where: {
+        ...(customerId ? { customerId } : {}),
+        ...(cashierId ? { cashierId } : {}),
+        ...(from || to
+          ? { createdAt: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } }
+          : {}),
+      },
+      include: saleInclude,
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    })
+    return reply.send(rows.map(toDomainSale))
+  })
+
+  // ── GET /api/sales/:id — detail (receipt-style view) ──
+  app.get('/:id', { preHandler: [app.authenticate, app.requireRole(...SALE_CREATOR_ROLES)] }, async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const row = await prisma.sale.findUnique({ where: { id }, include: saleInclude })
+    if (!row) {
+      return reply.code(404).send({ error: 'NotFound', message: `Sale "${id}" does not exist.` })
+    }
+    return reply.send(toDomainSale(row))
+  })
+
+  // ── POST /api/sales — direct online submission ──
 
   app.post('/', { preHandler: [app.authenticate, app.requireRole(...SALE_CREATOR_ROLES)] }, async (req, reply) => {
     const parseResult = saleSchema.safeParse(req.body)

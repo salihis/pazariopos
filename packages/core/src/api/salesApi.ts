@@ -77,6 +77,20 @@ export const salesApi = {
       body: JSON.stringify(sale),
     })
   },
+
+  /** Lists past sales for the back-office "Satış Fatura Listesi" screen. */
+  listSales(filters: { from?: string; to?: string; customerId?: string; cashierId?: string } = {}): Promise<Sale[]> {
+    const params = new URLSearchParams()
+    if (filters.from) params.set('from', filters.from)
+    if (filters.to) params.set('to', filters.to)
+    if (filters.customerId) params.set('customerId', filters.customerId)
+    if (filters.cashierId) params.set('cashierId', filters.cashierId)
+    const query = params.toString()
+    return request<Sale[]>(`/api/sales${query ? `?${query}` : ''}`)
+  },
+  getSale(id: string): Promise<Sale> {
+    return request<Sale>(`/api/sales/${id}`)
+  },
 }
 
 export type CreateAccountInput = Omit<Account, 'id' | 'balance' | 'createdAt' | 'updatedAt'>

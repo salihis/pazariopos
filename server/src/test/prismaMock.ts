@@ -31,7 +31,7 @@ export function createPrismaMock() {
   type TxMock = typeof tx
 
   const prisma = {
-    sale: { findUnique: vi.fn() },
+    sale: { findUnique: vi.fn(), findMany: vi.fn() },
     purchase: { findMany: vi.fn(), findUnique: vi.fn() },
     $transaction: vi.fn(async (callback: (txArg: TxMock) => unknown) => {
       return callback(tx)

@@ -1835,3 +1835,50 @@ Kullanıcı gerçek bir Alış Faturası oluşturdu, Açık Hesap (vadeli) ile b
   azaltıyor, tıpkı planlandığı gibi)
 
 **FAZ 3 TAMAMLANDI VE DOĞRULANDI.** Henüz commit/push edilmedi.
+
+### ✅ Faz 3 — GERÇEKTEN UÇTAN UCA DOĞRULANDI (CI, 9 Ağustos 2026)
+
+Push sonrası CI'da bir gerçek hata bulundu ve düzeltildi: `packages/core`'daki
+`AccountTransactionType` (Prisma'nın `TransactionType` enum'unu ayna gibi tutan client-side
+tip) içine `'purchase'` eklenmemişti — bu sandbox'ta hiç yakalanamadı çünkü server typecheck'i
+burada zaten hep Prisma-client eksikliğinden başarısız oluyordu (bilinen kısıt); CI'da gerçek
+Prisma tipleri üretilince gerçek tip uyuşmazlığı ortaya çıktı. Ayrıca `referencePurchaseId`
+alanının domain tiplerine/mapper'lara hiç yansımadığı fark edilip eklendi (izlenebilirlik).
+
+Düzeltme push edildi, **5/5 job yeşil.**
+
+**FAZ 3 TAMAMEN TAMAMLANDI — kullanıcı makinesinde VE CI'da (gerçek Postgres) doğrulandı.**
+
+## ✅ Satış Fatura Listesi (9 Ağustos 2026)
+
+Planlanan Faz 2 — Alış Faturası'na öncelik verildiği için ertelenmişti, sırasıyla devam
+edilerek şimdi tamamlandı. **Şema değişikliği gerekmedi** (sadece yeni okuma endpoint'leri).
+
+### Backend
+
+- `GET /api/sales` — tarih aralığı, müşteri, kasiyer filtreli liste (en fazla 500 kayıt —
+  bu bir tarama/rapor listesi, büyük aralıklar için toplu rakamlar `reportsApi`'den alınmalı)
+- `GET /api/sales/:id` — detay (makbuz görünümü için)
+- Roller: mevcut `SALE_CREATOR_ROLES` (admin/accountant/cashier/warehouse) ile aynı
+
+### Frontend
+
+- `packages/ui/src/BackOffice/SalesInvoicesPanel.tsx` — tarih aralığı + müşteri filtresi,
+  satıra tıklayınca genişleyen ürün/tutar detayı (Ara Toplam/KDV/İskonto/Genel Toplam)
+- BackOffice'e 6. sekme: "🧾 Satış Faturaları"
+- `packages/core`: `salesApi.listSales()`/`getSale()` eklendi
+
+### ✅ Bu sandbox'ta doğrulanan
+
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+test (core+server): 86/86 PASS (server: 53, +5 yeni GET /api/sales testi — 401, filtreli
+  liste, geçersiz tarih 400, 404, detay 200)
+build (web): PASS
+```
+
+### 📋 Kullanıcının yapması gereken
+
+Migration YOK, sadece kod. `pnpm dev` sonrası "Satış Faturaları" sekmesinden geçmiş
+satışların listelendiğini ve satıra tıklayınca detayın açıldığını doğrulaması yeterli.

@@ -378,6 +378,81 @@ describe('POST /api/sales', () => {
   })
 })
 
+describe('GET /api/sales', () => {
+  let app: FastifyInstance
+
+  beforeEach(async () => {
+    prismaMock = createPrismaMock()
+    const { salesRoutes } = await import('./sales')
+    app = await buildTestApp(salesRoutes)
+  })
+
+  afterEach(async () => {
+    await app.close()
+    vi.resetModules()
+  })
+
+  it('rejects requests with no Authorization header (401)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/sales' })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('lists sales, optionally filtered by customerId and date range', async () => {
+    const payload = validSalePayload({ customerId: 'cust-1' })
+    prismaMock.prisma.sale.findMany.mockResolvedValue([fakeSaleRow(payload)])
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/sales?customerId=cust-1&from=2026-01-01T00:00:00.000Z&to=2026-01-31T23:59:59.999Z',
+      headers: { authorization: `Bearer ${tokenFor()}` },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(prismaMock.prisma.sale.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          customerId: 'cust-1',
+          createdAt: { gte: new Date('2026-01-01T00:00:00.000Z'), lte: new Date('2026-01-31T23:59:59.999Z') },
+        }),
+      }),
+    )
+    expect(res.json()).toHaveLength(1)
+  })
+
+  it('rejects a malformed date filter with 400', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/sales?from=not-a-date',
+      headers: { authorization: `Bearer ${tokenFor()}` },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('returns 404 for a sale id that does not exist', async () => {
+    prismaMock.prisma.sale.findUnique.mockResolvedValue(null)
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/sales/does-not-exist',
+      headers: { authorization: `Bearer ${tokenFor()}` },
+    })
+
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('returns a sale by id when it exists', async () => {
+    const payload = validSalePayload()
+    prismaMock.prisma.sale.findUnique.mockResolvedValue(fakeSaleRow(payload))
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/sales/sale-db-id-1',
+      headers: { authorization: `Bearer ${tokenFor()}` },
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().id).toBe('sale-db-id-1')
+  })
+})
+
 describe('POST /api/sales/sync', () => {
   let app: FastifyInstance
 

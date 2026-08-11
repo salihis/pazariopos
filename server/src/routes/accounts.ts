@@ -180,11 +180,24 @@ export const accountsRoutes: FastifyPluginAsync = async (app) => {
         const account = await tx.account.findUnique({ where: { id: accountId } })
         if (!account) throw new AccountNotFoundError(accountId)
 
+        // Account.balance is always "what this counterparty owes us, net" —
+        // positive for customer/employee/other (they owe us), but negative
+        // for a supplier (we owe THEM — see schema.prisma's
+        // TransactionType.purchase comment). Paying a bill therefore moves
+        // the balance in opposite directions depending on which side of
+        // the counter this account is on:
+        //   • customer/employee/other: balance decrements toward zero
+        //     from above, and matches against open 'invoice' transactions.
+        //   • supplier: balance increments toward zero from below, and
+        //     matches against open 'purchase' transactions instead.
+        const isSupplier = account.type === 'supplier'
+        const matchType = isSupplier ? 'purchase' : 'invoice'
+
         const paymentTx = await tx.accountTransaction.create({
           data: {
             accountId,
             type: 'payment',
-            amount: -amount,       // credit — decreases balance
+            amount: isSupplier ? amount : -amount,
             openAmount: amount,    // starts fully unmatched/unapplied
             description,
           },
@@ -196,7 +209,7 @@ export const accountsRoutes: FastifyPluginAsync = async (app) => {
           // ── Explicit matching ──
           for (const m of matches) {
             const invoice = await tx.accountTransaction.findUnique({ where: { id: m.invoiceTransactionId } })
-            if (!invoice || invoice.accountId !== accountId || invoice.type !== 'invoice') {
+            if (!invoice || invoice.accountId !== accountId || invoice.type !== matchType) {
               throw new InvalidMatchError(m.invoiceTransactionId)
             }
             if (invoice.openAmount < m.amount) {
@@ -213,9 +226,9 @@ export const accountsRoutes: FastifyPluginAsync = async (app) => {
             remaining -= m.amount
           }
         } else {
-          // ── Auto-match, oldest open invoice first ──
+          // ── Auto-match, oldest open invoice/purchase first ──
           const openInvoices = await tx.accountTransaction.findMany({
-            where: { accountId, type: 'invoice', openAmount: { gt: 0 } },
+            where: { accountId, type: matchType, openAmount: { gt: 0 } },
             orderBy: { createdAt: 'asc' },
           })
 
@@ -234,8 +247,9 @@ export const accountsRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        // Whatever wasn't matched to an invoice stays as the payment's own
-        // open amount (e.g. customer overpaid, or had no open invoices yet).
+        // Whatever wasn't matched to an invoice/purchase stays as the
+        // payment's own open amount (e.g. customer overpaid, or had no
+        // open invoices yet).
         await tx.accountTransaction.update({
           where: { id: paymentTx.id },
           data: { openAmount: remaining },
@@ -243,7 +257,7 @@ export const accountsRoutes: FastifyPluginAsync = async (app) => {
 
         const updatedAccount = await tx.account.update({
           where: { id: accountId },
-          data: { balance: { decrement: amount } },
+          data: { balance: isSupplier ? { increment: amount } : { decrement: amount } },
         })
 
         return {

@@ -1882,3 +1882,47 @@ build (web): PASS
 
 Migration YOK, sadece kod. `pnpm dev` sonrası "Satış Faturaları" sekmesinden geçmiş
 satışların listelendiğini ve satıra tıklayınca detayın açıldığını doğrulaması yeterli.
+
+### ✅ Satış Fatura Listesi — CI'da doğrulandı (9 Ağustos 2026, 5/5 yeşil)
+
+## ✅ Tedarikçi "Ödeme Al" Yön Hatası — DÜZELTİLDİ (9 Ağustos 2026)
+
+En baştan beri ertelenen bilinen hata artık çözüldü. Kök neden beklenenden daha kapsamlıydı:
+`accounts.ts`'deki `/accounts/:id/payments` endpoint'i sadece işaret değil, **açık kalem
+eşleştirme (open-item matching) mantığının tamamı** müşteri yönüne göre sabitlenmişti.
+
+### Yapılan düzeltme
+
+`account.type === 'supplier'` kontrolüne göre üç şey dallandırıldı:
+1. **İşlem tutarının işareti**: müşteri/çalışan/diğer → negatif (bakiye azalır, mevcut
+   davranış korundu); tedarikçi → **pozitif** (bakiye artar, negatiften sıfıra doğru)
+2. **Otomatik eşleştirme (FIFO) hangi işlem tipine bakıyor**: müşteri → `invoice` (veresiye
+   satış); tedarikçi → **`purchase`** (alış faturası) — böylece bir tedarikçi ödemesi doğru
+   şekilde açık alış faturalarını kapatıyor, yanlışlıkla satış faturalarını değil
+3. **`account.balance` güncelleme yönü**: müşteri → `decrement`; tedarikçi → **`increment`**
+
+UI: `AccountsPanel.tsx`'te buton/placeholder artık hesap tipine göre değişiyor — tedarikçide
+"Ödeme Yap", diğerlerinde "Ödeme Al". Ayrıca kredi limiti uyarısı (müşteriye özgü bir kavram)
+tedarikçi hesaplarında artık gösterilmiyor.
+
+### Test kapsamı eklendi (bu endpoint'in HİÇ testi yoktu — hatanın fark edilmeden kalma nedeni)
+
+`server/src/routes/accounts.test.ts` — 8 test: müşteri yönü (negatif/decrement, invoice
+eşleştirme), **tedarikçi yönü (pozitif/increment, purchase eşleştirme)**, çalışan/diğer
+(müşteriyle aynı, değişmedi), yanlış tipte açık eşleştirme reddi, 404, 401.
+
+### ✅ Bu sandbox'ta doğrulanan
+
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+test (core+server): 94/94 PASS (server: 61, +8 yeni accounts.test.ts)
+build (web): PASS
+```
+
+### 📋 Kullanıcının yapması gereken
+
+Migration YOK, sadece kod. `pnpm dev` sonrası "Cari Hesap" sekmesinden bir tedarikçi seçip
+buton yazısının "Ödeme Yap" olduğunu, bir ödeme kaydedince bakiyenin **arttığını** (sıfıra
+doğru) doğrulaması yeterli. Daha önce oluşturulmuş Alış Faturası'ndaki açık borç, ödeme
+sonrası doğru şekilde kapanmalı.

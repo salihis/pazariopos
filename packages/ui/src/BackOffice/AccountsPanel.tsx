@@ -247,7 +247,7 @@ export function AccountsPanel() {
               </div>
             </div>
 
-            {selectedAccount.creditLimit > 0 && (
+            {selectedAccount.creditLimit > 0 && selectedAccount.type !== 'supplier' && (
               <div className="mt-2 text-xs text-[var(--color-ink-soft)]">
                 Kredi limiti: <span className="tabular-money">{money(selectedAccount.creditLimit)}</span>
                 {selectedAccount.balance > selectedAccount.creditLimit && (
@@ -262,7 +262,7 @@ export function AccountsPanel() {
               <input
                 type="text"
                 inputMode="decimal"
-                placeholder="Ödeme tutarı (ör. 100.00)"
+                placeholder={selectedAccount.type === 'supplier' ? 'Ödenecek tutar (ör. 100.00)' : 'Ödeme tutarı (ör. 100.00)'}
                 value={paymentAmount}
                 onChange={e => setPaymentAmount(e.target.value)}
                 className="flex-1 rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--color-saffron)]"
@@ -271,7 +271,7 @@ export function AccountsPanel() {
                 className="rounded-lg bg-[var(--color-saffron)] px-4 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-saffron-dark)] hover:text-white"
                 onClick={handleRecordPayment}
               >
-                Ödeme Al
+                {selectedAccount.type === 'supplier' ? 'Ödeme Yap' : 'Ödeme Al'}
               </button>
             </div>
             {paymentMessage && <div className="mt-2 text-xs">{paymentMessage}</div>}

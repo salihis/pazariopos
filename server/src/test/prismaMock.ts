@@ -23,7 +23,13 @@ export function createPrismaMock() {
     purchase: { create: vi.fn() },
     product: { update: vi.fn() },
     account: { findUnique: vi.fn(), update: vi.fn() },
-    accountTransaction: { create: vi.fn() },
+    accountTransaction: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn(),
+    },
+    accountTransactionMatch: { create: vi.fn() },
     cashRegister: { findUnique: vi.fn(), update: vi.fn() },
     cashMovement: { create: vi.fn() },
   }

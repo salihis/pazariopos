@@ -14,6 +14,7 @@
 // (also runs automatically after `prisma migrate dev`)
 // ─────────────────────────────────────────────────────────────
 
+import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 

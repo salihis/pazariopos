@@ -1,0 +1,72 @@
+# deploy/nginx.conf.example
+# ─────────────────────────────────────────────────────────────
+# Nginx site config: serves the built web app as static files AND
+# reverse-proxies /api/* to the Fastify server on localhost:3000 —
+# both on the SAME subdomain. This is deliberate: same-origin means
+# the browser never needs CORS for normal use, which is one less
+# thing that can silently break in production.
+#
+# SETUP:
+#   1. Copy this file to /etc/nginx/sites-available/pazariopos
+#      (server_name below is already set to erp.pazario.tr — no
+#      placeholder text left to replace)
+#   2. sudo ln -s /etc/nginx/sites-available/pazariopos /etc/nginx/sites-enabled/
+#   3. sudo nginx -t   (validates syntax before reloading — always run this first)
+#   4. sudo systemctl reload nginx
+#   5. Run certbot (see deploy/README.md step 11) — it will automatically
+#      rewrite this file to add the SSL server block. Don't hand-edit the
+#      SSL certificate paths yourself; let certbot manage them.
+#
+# This only touches the "erp.pazario.tr" subdomain — your root
+# domain and any other subdomains (e.g. the marketplace integration)
+# are completely untouched by this file.
+# ─────────────────────────────────────────────────────────────
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name erp.pazario.tr;
+
+    # Web app: serve the Vite build output directly.
+    root /var/www/pazariopos/apps/web/dist;
+    index index.html;
+
+    # SPA fallback — any path that isn't a real static file falls
+    # through to index.html, so client-side routing (if added later)
+    # and hard-refreshes on any URL both work.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache hashed build assets aggressively — Vite fingerprints
+    # filenames (e.g. index-C3lNsOgQ.js), so a new deploy always gets a
+    # new filename and this long cache never serves stale JS/CSS.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # API: reverse-proxy to the Fastify server (PM2-managed, see
+    # deploy/ecosystem.config.cjs), listening on localhost:3000 only —
+    # it's never exposed directly to the internet.
+    location /api/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Fastify's own request logging already captures timing; keep
+        # proxy timeouts generous but not infinite so a hung DB query
+        # can't hold a connection open forever.
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 30s;
+    }
+
+    # Reasonable upload limit for whatever admin/back-office actions
+    # end up needing it (product images, CSV import, etc. — none of
+    # today's endpoints need more than a few KB, this just avoids a
+    # surprise 413 if that changes later).
+    client_max_body_size 10m;
+}

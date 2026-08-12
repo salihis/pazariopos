@@ -1926,3 +1926,76 @@ Migration YOK, sadece kod. `pnpm dev` sonrası "Cari Hesap" sekmesinden bir teda
 buton yazısının "Ödeme Yap" olduğunu, bir ödeme kaydedince bakiyenin **arttığını** (sıfıra
 doğru) doğrulaması yeterli. Daha önce oluşturulmuş Alış Faturası'ndaki açık borç, ödeme
 sonrası doğru şekilde kapanmalı.
+
+### ✅ Tedarikçi Ödeme Yönü Düzeltmesi — CI'da doğrulandı (9 Ağustos 2026, 5/5 yeşil)
+
+## 🚀 Production Deployment — planlama aşamasında (9 Ağustos 2026)
+
+## ✅ Production Deployment — kurulum dosyaları hazır (9 Ağustos 2026)
+
+Hedef: `erp.yourdomain.com` (kullanıcının kendi domain'i altında subdomain), self-managed VPS,
+demo/test amaçlı. `ARCHITECTURE.md` §9'daki daha büyük ölçekli mimari (CDN, replica, Redis)
+şu an için bilinçli olarak uygulanmadı — kod tabanında Redis hiç kullanılmıyor, gereksiz karmaşıklık.
+
+### 🐛 Yol boyunca bulunan gerçek bir hata — `.env` hiç güvenilir şekilde yüklenmiyordu
+
+Kod tabanında `dotenv` hiç kullanılmıyordu. Ampirik olarak test edildi: ne `tsx watch` ne de
+`PrismaClient` örneklemesi `.env` dosyasını `process.env`'e otomatik yüklüyor. Dev ortamında
+her şey "çalışıyormuş" gibi görünüyordu çünkü `JWT_SECRET`/`CORS_ORIGIN`/`PORT` gibi değerlerin
+hepsinde fallback vardı (`process.env.X ?? 'varsayılan'`) — ama **`DATABASE_URL`'in fallback'ı
+yok**, bu yüzden production'da (PM2 ile `node dist/main.js` direkt çalıştırıldığında) sessizce
+çökebilirdi. Düzeltme: `dotenv` paketi eklendi, `server/src/main.ts` ve `server/prisma/seed.ts`'in
+**en başına** `import 'dotenv/config'` eklendi (diğer modüller `process.env`'i okumadan önce
+çalışması garanti edilecek şekilde). Derlenmiş `dist/main.js` üzerinde gerçekten test edilip
+doğrulandı.
+
+### Eklenen dosyalar (`deploy/`)
+
+- `deploy/README.md` — 12 adımlık tam kurulum rehberi (VPS temel güvenlik → Node/pnpm/Docker →
+  proje klonlama → `.env` ayarları → Postgres → migration → build → PM2 → Nginx → DNS → SSL →
+  doğrulama), artı güncelleme/redeploy akışı ve sorun giderme bölümü
+- `deploy/nginx.conf.example` — tek subdomain'de hem statik web hem `/api` reverse proxy
+  (aynı origin, CORS derdi yok); `nginx -t` ile sandbox'ta syntax doğrulandı
+- `docker/docker-compose.prod.yml` — sadece Postgres (Redis dahil değil, kullanılmıyor),
+  port sadece `127.0.0.1`'e bağlı (internete asla açık değil), secret'lar `.env.prod`'dan
+- `deploy/ecosystem.config.cjs` — PM2 process config (`.cjs` uzantısı bilinçli — kök
+  `package.json`'daki `"type": "module"` ile çakışmasın diye)
+- `deploy/redeploy.sh` — tek komutla güncelleme script'i (`bash -n` ile syntax doğrulandı)
+
+### ✅ Bu sandbox'ta doğrulanan
+
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+test (core+server): 94/94 PASS — regresyon yok
+build (web+server): PASS
+nginx -t: syntax OK (sandbox'ın IPv6 desteklememesi dışında — gerçek VPS'te sorun olmayacak)
+docker-compose.prod.yml: YAML syntax doğrulandı
+dist/main.js gerçekten çalıştırılıp .env'in doğru yüklendiği teyit edildi
+```
+
+### ⏳ Bu sandbox'ta hiç doğrulanamayan (gerçek VPS gerekiyor)
+
+Tüm `deploy/README.md` adımları — VPS'e SSH, Docker/Nginx/PM2/certbot kurulumu, DNS
+yayılması, SSL sertifikası. **Kullanıcının kendi VPS'inde ilk gerçek doğrulaması burada olacak.**
+
+### 📋 Kullanıcının yapması gereken
+
+1. Bir VPS satın al/hazırla (yoksa)
+2. `erp.<kendi domainin>` için DNS panelinde A kaydı ekle (VPS IP'sine)
+3. `deploy/README.md`'yi adım adım takip et
+
+### 🔧 Güncelleme — kullanıcının gerçek altyapısına göre özelleştirildi (12 Ağustos 2026)
+
+Kullanıcı bilgisi netleşti: AWS EC2 (Ubuntu, Free Tier, Elastic IP henüz yok) + `pazario.tr`
+domain'i (Route 53'te değil — kontrol edildi, başka bir registrar'da). Rehber buna göre
+güncellendi:
+
+- Tüm placeholder'lar gerçek domain'e (`erp.pazario.tr`) çevrildi
+- Yeni **0.5. AWS EC2'ye özel hazırlık** bölümü eklendi: Elastic IP ayırma (Free Tier'da
+  ücretsiz, ama boşta bırakılmamalı), Security Group inbound kuralları (22/80/443), EC2'nin
+  `ubuntu` kullanıcısıyla bağlanma
+- Adım 1 (yeni kullanıcı oluşturma) EC2 için gereksiz olduğu belirtilip atlanabilir yapıldı,
+  genel VPS kullanıcıları için `<details>` bloğuna alındı
+- Adım 10 (DNS), `pazario.tr`'nin Route 53'te olmadığı doğrulandıktan sonra "kendi registrar
+  panelinden ekle" olarak netleştirildi

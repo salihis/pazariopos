@@ -1,0 +1,52 @@
+# docker/docker-compose.prod.yml
+# ─────────────────────────────────────────────────────────────
+# Production Postgres for a single self-managed VPS. Deliberately
+# smaller than ARCHITECTURE.md §9's aspirational larger-scale design
+# (Cloudflare CDN, Postgres primary+replica, Redis cache/queue, PM2
+# cluster mode) — that document describes where this system could
+# grow to; this file is right-sized for where it actually is today
+# (demo/test deployment, single VPS). Nothing here blocks migrating
+# to that larger architecture later when the business actually needs
+# the extra capacity.
+#
+# Redis is intentionally NOT included: grep confirms nothing in
+# server/src/ imports redis/ioredis today. Add it back if/when a
+# feature actually needs caching or a job queue.
+#
+# SECURITY, compared to the dev compose file (docker/docker-compose.yml):
+#   - Postgres port is bound to 127.0.0.1 only, never the public
+#     interface — only the Fastify server (running on the same host)
+#     can reach it. Nginx/the internet never sees port 5432 at all.
+#   - Credentials come from deploy/.env.prod (see deploy/README.md
+#     step 4), NOT hardcoded dev placeholders like the dev file uses.
+#
+# USAGE: see deploy/README.md — this is run FROM the deploy/ directory
+# so its relative --env-file path resolves correctly:
+#   cd deploy && docker compose -f ../docker/docker-compose.prod.yml --env-file .env.prod up -d
+# ─────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pazariopos-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # 127.0.0.1 only — see the SECURITY note above. If you ever need
+      # a one-off connection from your own machine (e.g. psql, a GUI
+      # client), tunnel in over SSH rather than opening this port:
+      #   ssh -L 5432:localhost:5432 youruser@yourserver
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pazariopos_postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pazariopos_postgres_prod_data:

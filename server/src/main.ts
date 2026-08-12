@@ -9,6 +9,17 @@
 //   GET  /api/products            — inventory catalog (Inventory MVP)
 // ─────────────────────────────────────────────────────────────
 
+// MUST be the first import: db/prisma.ts and lib/jwt.ts read process.env
+// at module-evaluation time (e.g. `new PrismaClient()`, `JWT_SECRET =
+// process.env.JWT_SECRET ?? ...`), so .env has to be loaded before
+// anything else in the import graph runs. Verified empirically that
+// nothing else here does this automatically — neither `tsx watch` nor
+// instantiating PrismaClient populates process.env from .env on its
+// own; most vars only "worked" in dev because of the `?? 'fallback'`
+// defaults below (lib/jwt.ts, this file) masking the gap. DATABASE_URL
+// has no such fallback, so production would fail hard without this.
+import 'dotenv/config'
+
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 

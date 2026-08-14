@@ -1,0 +1,80 @@
+# deploy/docker-compose.pazariopos.yml
+# ─────────────────────────────────────────────────────────────
+# PazarioPOS's own stack (postgres + server + web), sharing the
+# EXISTING `pazario-net` Docker network with the marketplace stack
+# (/home/ubuntu/pazario/docker-compose.deploy.yml) so the shared host
+# nginx can reach these containers by name. Nothing here touches that
+# existing stack — no shared volumes, no shared container names, no
+# host ports opened by any of these three services (only the shared
+# nginx, already running, is internet-facing).
+#
+# USAGE (see deploy/README.md "AWS + mevcut pazaryeri sunucusu" bölümü):
+#   cd /var/www/pazariopos/deploy
+#   docker compose -f docker-compose.pazariopos.yml --env-file .env.prod up -d --build
+#
+# `pazario-net` must already exist (it does — it's the marketplace
+# stack's network) and is referenced as `external: true` below, so
+# this file never creates or modifies it.
+# ─────────────────────────────────────────────────────────────
+
+name: pazariopos
+
+services:
+  pazariopos-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pazariopos_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - pazario-net
+    # No `ports:` — only reachable from other containers on
+    # pazario-net (i.e. pazariopos-server below), never from the host
+    # or the internet.
+
+  pazariopos-server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pazariopos-postgres:5432/${POSTGRES_DB}?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 12h
+      CORS_ORIGIN: https://erp.pazario.tr,http://erp.pazario.tr
+    depends_on:
+      pazariopos-postgres:
+        condition: service_healthy
+    networks:
+      - pazario-net
+    # No `ports:` — the shared host nginx reaches this at
+    # http://pazariopos-server:3000 over pazario-net, never directly.
+
+  pazariopos-web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - pazariopos-server
+    networks:
+      - pazario-net
+    # No `ports:` — same reasoning as above; the shared host nginx
+    # reaches this at http://pazariopos-web:80.
+
+volumes:
+  pazariopos_postgres_data:
+
+networks:
+  pazario-net:
+    external: true

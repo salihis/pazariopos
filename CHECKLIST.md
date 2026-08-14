@@ -1999,3 +1999,55 @@ güncellendi:
   genel VPS kullanıcıları için `<details>` bloğuna alındı
 - Adım 10 (DNS), `pazario.tr`'nin Route 53'te olmadığı doğrulandıktan sonra "kendi registrar
   panelinden ekle" olarak netleştirildi
+
+### 🔧 Güncelleme — paylaşılan sunucu keşfi ve yeni plan (14 Ağustos 2026)
+
+Kullanıcı EC2'ye bağlanıp `docker ps` çalıştırınca **sunucunun boş olmadığı** ortaya çıktı —
+üzerinde zaten çalışan bir pazaryeri entegrasyonu (`pazario-deploy-*` container'ları: backend,
+admin, postgres, redis, nginx) var, biri 4 haftadır ayakta. En kritik bulgu: **mevcut nginx
+zaten host'un 80 portunu tutuyor** ve `server_name`'inde `_` (catch-all) var — orijinal plan
+(temiz VPS'e kendi sistem Nginx'imi kurmak) doğrudan çakışırdı.
+
+**Kullanıcı onayıyla revize edilen plan**: PazarioPOS'u kendi Postgres+server+web
+container'larıyla, mevcut `pazario-net` Docker network'üne bağlı ama farklı isimlerle
+(`pazariopos-*`) çalıştırıp, **mevcut nginx config dosyasına (yedeğini alarak) yeni bir
+`server{}` bloğu ekleyip** `erp.pazario.tr`'yi oraya yönlendirmek. Mevcut `backend`/`admin`/
+`postgres`/`redis`/`nginx` container'larına hiç dokunulmuyor. SSL şimdilik atlandı (kullanıcı
+onayıyla), önce HTTP ile çalıştığı doğrulanacak.
+
+### 🐛 Yol boyunca bulunan gerçek bir operasyonel risk
+
+İlk yazdığım nginx bloğu statik bir `upstream{}` kullanıyordu — bu, nginx'in DNS'i
+**başlangıçta** çözmesine neden olur. `pazariopos-server`/`pazariopos-web` container'ları henüz
+ayakta değilken (ya da herhangi bir an kapalıyken) paylaşılan nginx yeniden başlatılırsa/reload
+edilirse, **TÜM nginx başlamayı reddeder** — bu da canlı pazaryeri sitesini de düşürür. Düzeltme:
+statik `upstream{}` yerine `resolver 127.0.0.11 (Docker'ın DNS'i) + $değişken` ile **istek anında**
+DNS çözümü kullanıldı. Böylece nginx her zaman başlar; sadece `erp.pazario.tr`'ye gelen istekler
+(pazariopos ayakta değilse) 502 döner, `pazario.tr` hiç etkilenmez. Sandbox'ta hem hatalı hem
+düzeltilmiş hali `nginx -t` ile test edilip fark doğrulandı.
+
+### Eklenen yeni dosyalar
+
+- `server/Dockerfile`, `apps/web/Dockerfile` + `apps/web/nginx.internal.conf` — pnpm workspace
+  monorepo'dan multi-stage build (context repo kökü olmalı, `packages/core`'a workspace
+  bağımlılığı olduğu için)
+- `deploy/docker-compose.pazariopos.yml` — mevcut `pazario-net`'i `external: true` ile referans
+  alır, kendi container'larını hiç host portu açmadan (sadece nginx'ten erişilebilir) çalıştırır
+- `deploy/nginx.pazariopos.snippet.conf` — eklenecek `server{}` bloğu (lazy DNS ile)
+- `deploy/insert_pazariopos_nginx_block.py` — mevcut config'e **otomatik yedekli, tekrar
+  çalıştırılırsa yinelenen blok eklemeyi reddeden** güvenli ekleme script'i; sahte bir nginx
+  config'iyle test edilip parantez dengesi + `nginx -t` ile doğrulandı
+- `deploy/.env.prod.example` — Postgres + JWT secret şablonu
+
+### ✅ Bu sandbox'ta doğrulanan
+```
+docker-compose.pazariopos.yml: YAML syntax doğrulandı
+nginx.pazariopos.snippet.conf: nginx -t ile syntax doğrulandı (hem hatalı statik upstream
+  hem düzeltilmiş lazy-DNS versiyonu test edilip fark kanıtlandı)
+insert_pazariopos_nginx_block.py: sahte bir nginx.deploy.conf'a karşı çalıştırılıp
+  yedekleme + doğru ekleme + parantez dengesi doğrulandı
+```
+
+### ⏳ VPS'te henüz yapılmayanlar (canlı oturumda devam ediyor)
+Repo henüz VPS'e klonlanmadı (adım 3). Sıradaki adımlar: local commit/push → VPS'te git clone
+→ `.env.prod` doldurma → `docker compose ... up -d --build` → nginx bloğu ekleme → doğrulama.

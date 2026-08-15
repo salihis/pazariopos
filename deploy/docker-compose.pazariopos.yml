@@ -78,3 +78,4 @@ volumes:
 networks:
   pazario-net:
     external: true
+    name: pazario-deploy_pazario-net

@@ -13,7 +13,7 @@
 # Correctness over slimness.
 # ─────────────────────────────────────────────────────────────
 
-FROM node:20-alpine AS build
+FROM node:20-slim AS build
 RUN npm install -g pnpm@9.7.0
 WORKDIR /repo
 COPY . .
@@ -21,7 +21,12 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @pazariopos/server exec prisma generate
 RUN pnpm turbo run build --filter=@pazariopos/server
 
-FROM node:20-alpine AS runtime
+FROM node:20-slim AS runtime
+# Prisma's query engine binary needs libssl at runtime. node:20-slim
+# (Debian) doesn't include it by default — install explicitly rather
+# than relying on it being pulled in transitively.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY --from=build /repo /repo
 WORKDIR /repo/server

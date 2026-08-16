@@ -11,13 +11,14 @@
 // ─────────────────────────────────────────────────────────────
 
 generator client {
-  provider      = "prisma-client-js"
-  // "native" covers local dev (Ubuntu/glibc). "linux-musl-openssl-3.0.x"
-  // covers server/Dockerfile's node:20-alpine runtime — modern Alpine
-  // ships OpenSSL 3 only, so the default 'linux-musl' target (which
-  // assumes OpenSSL 1.1) fails at container startup with "Error
-  // loading shared library libssl.so.1.1: No such file or directory".
-  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  provider = "prisma-client-js"
+  // Alpine's musl+OpenSSL-3 combination kept causing Prisma's engine
+  // auto-detection to pick the wrong (OpenSSL-1.1) engine at container
+  // runtime even with an explicit linux-musl-openssl-3.0.x target
+  // added — see git history for that dead end. server/Dockerfile now
+  // builds AND runs on Debian-slim (glibc), matching local dev
+  // (Ubuntu, also glibc), so "native" alone resolves correctly in
+  // both places with no cross-platform ambiguity at all.
 }
 
 datasource db {

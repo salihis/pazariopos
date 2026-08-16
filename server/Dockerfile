@@ -15,6 +15,11 @@
 
 FROM node:20-slim AS build
 RUN npm install -g pnpm@9.7.0
+# Needed so `prisma generate`'s "native" OpenSSL-version detection
+# sees the real OpenSSL 3.0.x here — without this, it silently
+# guessed 1.1.x instead (see schema.prisma's binaryTargets comment).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile

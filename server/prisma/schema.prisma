@@ -11,14 +11,17 @@
 // ─────────────────────────────────────────────────────────────
 
 generator client {
-  provider = "prisma-client-js"
-  // Alpine's musl+OpenSSL-3 combination kept causing Prisma's engine
-  // auto-detection to pick the wrong (OpenSSL-1.1) engine at container
-  // runtime even with an explicit linux-musl-openssl-3.0.x target
-  // added — see git history for that dead end. server/Dockerfile now
-  // builds AND runs on Debian-slim (glibc), matching local dev
-  // (Ubuntu, also glibc), so "native" alone resolves correctly in
-  // both places with no cross-platform ambiguity at all.
+  provider      = "prisma-client-js"
+  // Switching server/Dockerfile from Alpine to Debian-slim (previous
+  // fix) didn't fully solve this on its own: during the Docker BUILD
+  // stage, `prisma generate` ran before openssl was installed (that
+  // apt-get only happened in the RUNTIME stage), so "native"
+  // detection guessed the wrong OpenSSL version (1.1.x) instead of
+  // what's actually present at runtime (3.0.x). Explicit target here
+  // is the fix Prisma's own error message suggests; server/Dockerfile
+  // also now installs openssl in the BUILD stage too, so future
+  // "native" detection is correct on its own as well.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

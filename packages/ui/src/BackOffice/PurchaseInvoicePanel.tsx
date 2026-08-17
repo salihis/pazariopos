@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   productsApi, accountsApi, purchasesApi,
+  useFinanceStore, useAccountStore,
   type Product, type Account, type PaymentMethod,
 } from '@pazariopos/core'
 import { money } from '../lib/format'
@@ -194,6 +195,14 @@ export function PurchaseInvoicePanel() {
       setSupplierId(null)
       setLines([emptyLine()])
       await load()
+      // The purchase's own $transaction updates cash_registers/accounts
+      // directly server-side — these stores don't know that happened
+      // unless we tell them to refetch. Always refresh both regardless
+      // of payment method (cheap, and simpler than conditioning on it).
+      await Promise.all([
+        useFinanceStore.getState().loadAll(),
+        useAccountStore.getState().loadAccounts(),
+      ])
     } catch (err) {
       setMessage(`Hata: ${err instanceof Error ? err.message : String(err)}`)
     } finally {

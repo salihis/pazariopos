@@ -2051,3 +2051,45 @@ insert_pazariopos_nginx_block.py: sahte bir nginx.deploy.conf'a karşı çalış
 ### ⏳ VPS'te henüz yapılmayanlar (canlı oturumda devam ediyor)
 Repo henüz VPS'e klonlanmadı (adım 3). Sıradaki adımlar: local commit/push → VPS'te git clone
 → `.env.prod` doldurma → `docker compose ... up -d --build` → nginx bloğu ekleme → doğrulama.
+
+## ✅ PRODUCTION DEPLOYMENT — CANLI VE ÇALIŞIYOR (16 Ağustos 2026)
+
+`https://erp.pazario.tr` üzerinde gerçek kullanıcı testleriyle uçtan uca doğrulandı:
+- AWS EC2 (Ubuntu, Elastic IP) + mevcut pazaryeri sunucusuyla paylaşımlı, hiçbir şeyi bozmadan
+- Docker container'ları (postgres/server/web) ayakta, migration'lar uygulandı
+- Nginx entegrasyonu çalışıyor (mevcut siteye dokunulmadı)
+- Cloudflare üzerinden SSL aktif (Flexible mode)
+- Giriş yapılabiliyor, Alış Faturası oluşturulabiliyor, stok artıyor, Kasa/Cari Hesap doğru
+  güncelleniyor
+
+### Yol boyunca çözülen gerçek hatalar (production'da, sandbox'ta hiç görülemeyen türden)
+1. Prisma engine Alpine/musl uyumsuzluğu → Debian-slim tabanına geçiş + `debian-openssl-3.0.x`
+   binaryTarget (Prisma'nın kendi hata mesajının önerdiği düzeltme)
+2. `openssl rand -base64` şifresindeki `/` karakteri DATABASE_URL'i bozdu → hex format kullanıldı
+3. Web build'de API adresi `localhost:3000`'e sabit kalıyordu (sadece yerel geliştirme için
+   düşünülmüş varsayım) → `apps/web/src/main.tsx`'te same-origin (relative) varsayılana çevrildi
+4. `crypto.randomUUID()` HTTP üzerinde çalışmıyor (tarayıcı güvenlik kısıtı) → SSL'in
+   önceliklendirilmesi gerektiğini kanıtladı, Cloudflare Flexible SSL ile çözüldü
+5. Alış Faturası sonrası Kasa/Cari Hesap ekranları yenilenmiyordu — backend doğruydu
+   (veritabanında bakiye doğru değişmişti), sorun `PurchaseInvoicePanel`'in ilgili store'ları
+   (`useFinanceStore`/`useAccountStore`) hiç yenilememesiydi. Düzeltildi.
+
+**PRODUCTION DEPLOYMENT TAMAMLANDI.**
+
+## ✅ Ürünler Sayfasına Excel İçe/Dışa Aktarma (16 Ağustos 2026)
+
+- **Dışa Aktar**: mevcut filtrelenmiş ürün listesini `.xlsx` olarak indirir (Ürün Kodu, Barkod,
+  Ad, Ana/Alt Kategori, Birim, Alış/Satış Fiyatı, KDV, Kritik Stok, Mevcut Stok, Durum)
+- **İçe Aktar**: aynı formatta bir Excel dosyası yükler — **Ürün Kodu (sku) ile eşleşirse
+  günceller, eşleşmezse yeni ürün oluşturur** ("dışa aktar → Excel'de düzenle → içe aktar"
+  akışı desteklenir). Kategori adları mevcut kategorilerle eşleştirilir, bulunamazsa otomatik
+  oluşturulur (formdaki hızlı-kategori-ekleme ile aynı UX). Satır bazlı hata raporu gösterilir
+  (örn. eksik ürün adı, geçersiz fiyat), diğer satırların işlenmesini engellemez.
+- Kullanılan kütüphane: `xlsx` (SheetJS)
+
+### ✅ Bu sandbox'ta doğrulanan
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+build (web): PASS (xlsx kütüphanesi nedeniyle bundle boyutu arttı — sadece performans uyarısı)
+```

@@ -12,12 +12,22 @@
 // Mevcut-Eklenen Stok / Ana Depo / İptal-Kaydet.
 // ─────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import * as XLSX from 'xlsx'
 import {
   productsApi, categoriesApi,
   type Product, type Category, type CreateProductInput, type UpdateProductInput,
 } from '@pazariopos/core'
 import { money } from '../lib/format'
+
+const EXCEL_HEADERS = [
+  'Ürün Kodu', 'Barkod', 'Ürün Adı', 'Ana Kategori', 'Alt Kategori', 'Birim',
+  'Alış Fiyatı', 'Satış Fiyatı', 'KDV Oranı (%)', 'Kritik Stok', 'Mevcut Stok', 'Durum',
+] as const
+
+type ExcelRow = Record<(typeof EXCEL_HEADERS)[number], unknown>
+
+type ImportOutcome = { created: number; updated: number; errors: string[] }
 
 const UNIT_LABELS: Record<Product['unit'], string> = {
   piece: 'Adet', box: 'Kutu', kg: 'Kg', lt: 'Lt',
@@ -91,6 +101,10 @@ export function ProductsPanel() {
   const [newMainCategoryName, setNewMainCategoryName] = useState('')
   const [newSubCategoryName, setNewSubCategoryName] = useState('')
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null)
+
   const load = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -120,6 +134,150 @@ export function ProductsPanel() {
     const parent = categories.find(c => c.id === cat.parentId)
     return parent ? `${parent.name} / ${cat.name}` : cat.name
   }, [categories])
+
+  // ── Excel dışa aktarma ──
+  // Round-trips with the import format below: exported columns match
+  // EXCEL_HEADERS exactly, so "export, edit in Excel, re-import" is a
+  // supported workflow, not just one-way reporting.
+  const handleExport = useCallback(() => {
+    const rows: ExcelRow[] = products.map(p => {
+      const cat = categories.find(c => c.id === p.categoryId)
+      const mainCategory = cat ? categories.find(c => c.id === (cat.parentId ?? cat.id)) : null
+      const subCategory = cat?.parentId ? cat : null
+      return {
+        'Ürün Kodu': p.sku,
+        'Barkod': p.barcode.join(', '),
+        'Ürün Adı': p.name,
+        'Ana Kategori': mainCategory?.name ?? '',
+        'Alt Kategori': subCategory?.name ?? '',
+        'Birim': UNIT_LABELS[p.unit],
+        'Alış Fiyatı': p.costPrice != null ? Number(money(p.costPrice)) : '',
+        'Satış Fiyatı': Number(money(p.price)),
+        'KDV Oranı (%)': Math.round(p.taxRate * 100),
+        'Kritik Stok': p.lowStockThreshold,
+        'Mevcut Stok': p.stock,
+        'Durum': p.isActive ? 'Aktif' : 'Pasif',
+      }
+    })
+    const sheet = XLSX.utils.json_to_sheet(rows, { header: [...EXCEL_HEADERS] })
+    sheet['!cols'] = EXCEL_HEADERS.map(h => ({ wch: Math.max(12, h.length + 2) }))
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Ürünler')
+    const dateStamp = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(workbook, `urunler-${dateStamp}.xlsx`)
+  }, [products, categories])
+
+  // ── Excel içe aktarma ──
+  // Matches existing products by "Ürün Kodu" (sku): a match updates
+  // that product, no match creates a new one. Category names are
+  // resolved against existing categories (case-insensitive) and
+  // auto-created if not found — same quick-add UX as the category
+  // fields in the form above, so importing a spreadsheet with new
+  // category names "just works" without a separate setup step.
+  const findOrCreateCategoryId = useCallback(async (
+    mainName: string, subName: string, categoryCache: Category[],
+  ): Promise<{ categoryId: string | null; categoryCache: Category[] }> => {
+    let cache = categoryCache
+    if (!mainName.trim()) return { categoryId: null, categoryCache: cache }
+
+    let main = cache.find(c => !c.parentId && c.name.toLowerCase() === mainName.trim().toLowerCase())
+    if (!main) {
+      main = await categoriesApi.createCategory({ name: mainName.trim(), type: 'product' })
+      cache = [...cache, main]
+    }
+    if (!subName.trim()) return { categoryId: main.id, categoryCache: cache }
+
+    let sub = cache.find(c => c.parentId === main!.id && c.name.toLowerCase() === subName.trim().toLowerCase())
+    if (!sub) {
+      sub = await categoriesApi.createCategory({ name: subName.trim(), type: 'product', parentId: main.id })
+      cache = [...cache, sub]
+    }
+    return { categoryId: sub.id, categoryCache: cache }
+  }, [])
+
+  const handleImportFile = useCallback(async (file: File) => {
+    setIsImporting(true)
+    setImportOutcome(null)
+    const outcome: ImportOutcome = { created: 0, updated: 0, errors: [] }
+
+    try {
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: 'array' })
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]!]
+      const rows = XLSX.utils.sheet_to_json<ExcelRow>(firstSheet!, { defval: '' })
+
+      let categoryCache = categories
+      let productCache = products
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!
+        const rowLabel = `Satır ${i + 2}` // +2: header row + 1-indexing
+
+        const sku = String(row['Ürün Kodu'] ?? '').trim()
+        const name = String(row['Ürün Adı'] ?? '').trim()
+        const priceValue = Number(row['Satış Fiyatı'])
+
+        if (!name) { outcome.errors.push(`${rowLabel}: Ürün adı boş, atlandı.`); continue }
+        if (!Number.isFinite(priceValue) || priceValue < 0) {
+          outcome.errors.push(`${rowLabel}: Geçersiz satış fiyatı, atlandı.`)
+          continue
+        }
+
+        const barcode = String(row['Barkod'] ?? '').split(',').map(s => s.trim()).filter(Boolean)
+        const unitLabel = String(row['Birim'] ?? '').trim()
+        const unit = (Object.keys(UNIT_LABELS) as Product['unit'][]).find(
+          u => UNIT_LABELS[u].toLowerCase() === unitLabel.toLowerCase(),
+        ) ?? 'piece'
+        const costPriceValue = Number(row['Alış Fiyatı'])
+        const costPrice = Number.isFinite(costPriceValue) && String(row['Alış Fiyatı']).trim() !== ''
+          ? Math.round(costPriceValue * 100) : null
+        const taxRateValue = Number(row['KDV Oranı (%)'])
+        const taxRate = Number.isFinite(taxRateValue) ? taxRateValue / 100 : 0.20
+        const lowStockThreshold = Number(row['Kritik Stok']) || 0
+        const stock = Number(row['Mevcut Stok']) || 0
+        const statusValue = String(row['Durum'] ?? '').trim().toLowerCase()
+
+        try {
+          const { categoryId, categoryCache: nextCache } = await findOrCreateCategoryId(
+            String(row['Ana Kategori'] ?? ''), String(row['Alt Kategori'] ?? ''), categoryCache,
+          )
+          categoryCache = nextCache
+
+          const existing = sku ? productCache.find(p => p.sku === sku) : undefined
+
+          if (existing) {
+            const input: UpdateProductInput = {
+              name, barcode, price: Math.round(priceValue * 100), costPrice, taxRate,
+              lowStockThreshold, unit, categoryId, warehouseId: existing.warehouseId,
+            }
+            const updated = await productsApi.updateProduct(existing.id, input)
+            if (statusValue === 'pasif' && updated.isActive) await productsApi.deactivateProduct(updated.id)
+            else if (statusValue === 'aktif' && !updated.isActive) await productsApi.activateProduct(updated.id)
+            productCache = productCache.map(p => (p.id === existing.id ? updated : p))
+            outcome.updated++
+          } else {
+            if (!sku) { outcome.errors.push(`${rowLabel}: Yeni ürün için "Ürün Kodu" zorunlu, atlandı.`); continue }
+            const input: CreateProductInput = {
+              sku, name, barcode, price: Math.round(priceValue * 100), costPrice, taxRate,
+              stock, lowStockThreshold, unit, categoryId,
+            }
+            const created = await productsApi.createProduct(input)
+            productCache = [...productCache, created]
+            outcome.created++
+          }
+        } catch (err) {
+          outcome.errors.push(`${rowLabel} (${sku || name}): ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+
+      setImportOutcome(outcome)
+      await load()
+    } catch (err) {
+      setImportOutcome({ created: 0, updated: 0, errors: [`Dosya okunamadı: ${err instanceof Error ? err.message : String(err)}`] })
+    } finally {
+      setIsImporting(false)
+    }
+  }, [categories, products, findOrCreateCategoryId, load])
 
   const startEdit = useCallback((p: Product) => {
     const cat = categories.find(c => c.id === p.categoryId)
@@ -255,12 +413,58 @@ export function ProductsPanel() {
           {showInactive ? 'Pasifler dahil' : 'Sadece aktifler'}
         </button>
         <button
+          className="rounded-lg border border-[var(--color-olive)] px-3 py-2 text-sm font-medium text-[var(--color-olive)] transition hover:bg-[var(--color-olive)] hover:text-white"
+          onClick={handleExport}
+          type="button"
+        >
+          📤 Excel'e Aktar
+        </button>
+        <button
+          className="rounded-lg border border-[var(--color-petrol)] px-3 py-2 text-sm font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-petrol)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isImporting}
+          type="button"
+        >
+          {isImporting ? 'İçe aktarılıyor…' : '📥 Excel\'den İçe Aktar'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) void handleImportFile(file)
+            e.target.value = '' // allow re-selecting the same file next time
+          }}
+        />
+        <button
           className="rounded-lg bg-[var(--color-saffron)] px-4 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-saffron-dark)] hover:text-white"
           onClick={startCreate}
         >
           + Yeni Ürün
         </button>
       </div>
+
+      {importOutcome && (
+        <div className="rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-4 text-sm">
+          <div className="font-medium">
+            İçe aktarma tamamlandı: <span className="text-[var(--color-olive)]">{importOutcome.created} yeni</span>,{' '}
+            <span className="text-[var(--color-petrol)]">{importOutcome.updated} güncellendi</span>
+            {importOutcome.errors.length > 0 && (
+              <span className="text-[var(--color-copper)]">, {importOutcome.errors.length} hata</span>
+            )}
+          </div>
+          {importOutcome.errors.length > 0 && (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[var(--color-copper)]">
+              {importOutcome.errors.map((err, i) => <li key={i}>{err}</li>)}
+            </ul>
+          )}
+          <button className="mt-2 text-xs text-[var(--color-ink-soft)] hover:underline" onClick={() => setImportOutcome(null)}>
+            Kapat
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <div className="rounded-2xl border border-[var(--color-paper-line)] bg-[var(--color-paper-dim)] p-5">

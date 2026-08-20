@@ -641,7 +641,8 @@ export function ProductsPanel() {
         ) : filtered.length === 0 ? (
           <p className="text-sm text-[var(--color-ink-soft)]">Ürün bulunamadı.</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead>
               <tr className="receipt-rule text-xs text-[var(--color-ink-soft)]">
                 <th className="pb-2 pt-1 text-left font-medium">Ürün Kodu</th>
@@ -674,6 +675,7 @@ export function ProductsPanel() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

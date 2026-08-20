@@ -11,18 +11,21 @@
 // ─────────────────────────────────────────────────────────────
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { useFinanceStore, useAccountStore } from '@pazariopos/core'
+import { useFinanceStore, useAccountStore, useAuthStore } from '@pazariopos/core'
 import { CashRegisterPanel } from './CashRegisterPanel'
 import { AccountsPanel } from './AccountsPanel'
 import { FinancePanel } from './FinancePanel'
 import { ProductsPanel } from './ProductsPanel'
 import { PurchaseInvoicePanel } from './PurchaseInvoicePanel'
 import { SalesInvoicesPanel } from './SalesInvoicesPanel'
+import { UsersPanel } from './UsersPanel'
 
-type Tab = 'cash' | 'accounts' | 'finance' | 'products' | 'purchases' | 'sales'
+type Tab = 'cash' | 'accounts' | 'finance' | 'products' | 'purchases' | 'sales' | 'users'
 
 export function BackOfficeScreen() {
   const [tab, setTab] = useState<Tab>('cash')
+  const currentUser = useAuthStore(s => s.currentUser)
+  const isAdmin = currentUser?.role === 'admin'
 
   // Both panels' data lives in stores that don't auto-load on mount
   // (unlike useInventoryStore, which PosScreen already drives) — kick
@@ -36,13 +39,17 @@ export function BackOfficeScreen() {
 
   return (
     <div>
-      <div className="mb-5 flex gap-2">
+      <div className="mb-5 flex flex-wrap gap-2">
         <TabButton active={tab === 'cash'} onClick={() => setTab('cash')}>💰 Kasa</TabButton>
         <TabButton active={tab === 'accounts'} onClick={() => setTab('accounts')}>📒 Cari Hesap</TabButton>
         <TabButton active={tab === 'finance'} onClick={() => setTab('finance')}>🏦 Finans</TabButton>
         <TabButton active={tab === 'products'} onClick={() => setTab('products')}>📦 Ürünler</TabButton>
         <TabButton active={tab === 'purchases'} onClick={() => setTab('purchases')}>🧾 Alış Faturası</TabButton>
         <TabButton active={tab === 'sales'} onClick={() => setTab('sales')}>🧾 Satış Faturaları</TabButton>
+        {/* Server-side RBAC already restricts every /api/users endpoint to
+            admin (see users.ts) — hiding the tab for non-admins is purely
+            a UX nicety on top of that, not the actual security boundary. */}
+        {isAdmin && <TabButton active={tab === 'users'} onClick={() => setTab('users')}>👤 Kullanıcılar</TabButton>}
       </div>
 
       {tab === 'cash' && <CashRegisterPanel />}
@@ -51,6 +58,7 @@ export function BackOfficeScreen() {
       {tab === 'products' && <ProductsPanel />}
       {tab === 'purchases' && <PurchaseInvoicePanel />}
       {tab === 'sales' && <SalesInvoicesPanel />}
+      {tab === 'users' && isAdmin && <UsersPanel />}
     </div>
   )
 }

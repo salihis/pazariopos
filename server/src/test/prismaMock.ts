@@ -39,6 +39,7 @@ export function createPrismaMock() {
   const prisma = {
     sale: { findUnique: vi.fn(), findMany: vi.fn() },
     purchase: { findMany: vi.fn(), findUnique: vi.fn() },
+    user: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(async (callback: (txArg: TxMock) => unknown) => {
       return callback(tx)
     }),

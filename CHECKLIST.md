@@ -2093,3 +2093,74 @@ typecheck (core/ui/web/desktop): 4/4 PASS
 lint (5 paket): 5/5 PASS
 build (web): PASS (xlsx kütüphanesi nedeniyle bundle boyutu arttı — sadece performans uyarısı)
 ```
+
+### ✅ Excel İçe/Dışa Aktarma — PRODUCTION'DA DOĞRULANDI (16 Ağustos 2026)
+`https://erp.pazario.tr` üzerinde gerçek kullanıcı testiyle onaylandı.
+
+## ✅ Kullanıcı Yönetimi Ekranı (17 Ağustos 2026)
+
+Backend API zaten hazırdı (`GET/POST /api/users`, `POST /me/password`) ama düzenleme, aktif/
+pasif yapma, ve admin'in başka kullanıcının şifresini sıfırlaması hiç yoktu. Eklendi:
+
+### Backend
+- `PUT /api/users/:id` — ad/rol düzenleme (kullanıcı adı değiştirilemez, ürünlerdeki sku
+  mantığıyla aynı gerekçe)
+- `PATCH /api/users/:id/deactivate` / `/activate` — soft-delete (geçmiş `Sale.cashierId`/
+  `Purchase.userId` referansları bozulmaz)
+- `POST /api/users/:id/reset-password` — admin başka kullanıcının şifresini sıfırlar (mevcut
+  şifre kontrolü yok, admin'in kendi auth token'ı yetki kanıtı)
+- **Self-lockout koruması**: admin kendi hesabını pasife alamaz ya da kendi rolünü admin'den
+  başka bir şeye düşüremez — yanlışlıkla kilitlenmeyi önler
+
+### Frontend
+- `packages/ui/src/BackOffice/UsersPanel.tsx` — liste, oluştur, düzenle, aktif/pasif, şifre
+  sıfırlama. BackOffice'e 7. sekme: "👤 Kullanıcılar" — **sadece admin rolüne görünür**
+  (server-side RBAC zaten `users.ts`'de var, bu sadece UX)
+
+### ✅ Bu sandbox'ta doğrulanan
+```
+typecheck (core/ui/web/desktop): 4/4 PASS
+lint (5 paket): 5/5 PASS
+test (core+server): 112/112 PASS (server: 79, +18 yeni users.test.ts — self-lockout
+  koruması iki senaryoda da (rol değiştirme + pasife alma) doğrulandı, 401/403/404/409)
+build (web): PASS
+```
+
+### 📋 Kullanıcının yapması gereken
+Migration YOK, sadece kod. Deploy sonrası admin ile giriş yapıp "Kullanıcılar" sekmesinden
+yeni kullanıcı oluşturma, düzenleme, kendi hesabını pasife almaya çalışıp engellendiğini
+doğrulaması yeterli.
+
+## ✅ Mobil Uyumluluk (17 Ağustos 2026)
+
+### Bulunan ve düzeltilen sorunlar
+- **Header** (`PosScreen.tsx`): mobilde taşıyordu — `flex-wrap` eklendi, başlık/padding
+  küçük ekranlarda küçültüldü, kullanıcı adı/rol çok dar ekranlarda gizlendi (buton/çıkış
+  önceliklendirildi)
+- **6 panelde 7 tablo** (Kasa, Cari Hesap, Finans, Ürünler, Satış Faturaları, Kullanıcılar) —
+  yatay kaydırma sarmalayıcısı (`overflow-x-auto`) hiç yoktu, mobilde tablolar ekrandan taşardı.
+  Toplu bir script ile düzeltildi.
+  - **Yol boyunca bulunan gerçek bir hata**: script, `SalesInvoicesPanel.tsx`'teki iç içe
+    tabloyu (satış detayının içindeki ürün tablosu) yanlış eşleştirip kapanış `div`'ini yanlış
+    yere koydu, JSX'i bozdu. Elle düzeltilip typecheck ile doğrulandı.
+- **Login ekranı**: dış kapsayıcıda kenar boşluğu yoktu, kart mobilde ekran kenarlarına
+  yapışıyordu; aşırı büyük üst boşluk (`mt-24`) küçük ekranlarda yer israf ediyordu — ikisi de
+  düzeltildi
+
+### Zaten mobil-uyumlu olduğu doğrulanan (ek düzeltme gerekmedi)
+- BackOffice sekme çubuğu (`flex-wrap` zaten vardı)
+- Tüm form grid'leri (`md:`/`lg:` breakpoint'leriyle mobilde tek sütuna düşüyor)
+- `PurchaseInvoicePanel`'in kendi tablosu (daha önceki bir turda zaten `overflow-x-auto` ile
+  yazılmıştı)
+- Viewport meta tag (`apps/web/index.html`'de zaten mevcuttu)
+
+### ✅ Bu sandbox'ta doğrulanan
+```
+typecheck (ui/web/desktop): 3/3 PASS
+lint (5 paket): 5/5 PASS
+build (web): PASS
+```
+
+**Not**: Bu, tarayıcı geliştirici araçlarının mobil emülatörüyle görsel olarak test edilmedi
+(sandbox'ta tarayıcı yok) — kullanıcının gerçek bir telefonda ya da tarayıcının mobil
+görünümünde (F12 → cihaz araç çubuğu) son bir görsel doğrulama yapması öneriliyor.

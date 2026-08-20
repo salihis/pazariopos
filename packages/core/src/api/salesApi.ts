@@ -375,6 +375,7 @@ export const authApi = {
 }
 
 export type CreateUserInput = { username: string; password: string; name: string; role: User['role'] }
+export type UpdateUserInput = { name: string; role: User['role'] }
 
 export const usersApi = {
   /** Admin only. */
@@ -384,6 +385,22 @@ export const usersApi = {
   /** Admin only. */
   createUser(input: CreateUserInput): Promise<User> {
     return request<User>('/api/users', { method: 'POST', body: JSON.stringify(input) })
+  },
+  /** Admin only. */
+  updateUser(id: string, input: UpdateUserInput): Promise<User> {
+    return request<User>(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(input) })
+  },
+  /** Admin only. */
+  deactivateUser(id: string): Promise<User> {
+    return request<User>(`/api/users/${id}/deactivate`, { method: 'PATCH' })
+  },
+  /** Admin only. */
+  activateUser(id: string): Promise<User> {
+    return request<User>(`/api/users/${id}/activate`, { method: 'PATCH' })
+  },
+  /** Admin only — resets ANOTHER user's password, no current-password check. */
+  resetPassword(id: string, newPassword: string): Promise<{ message: string }> {
+    return request(`/api/users/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ newPassword }) })
   },
   changeOwnPassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
     return request('/api/users/me/password', {

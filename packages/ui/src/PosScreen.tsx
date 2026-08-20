@@ -236,8 +236,8 @@ export function PosScreen() {
   // ── Not logged in → show the login form instead of the POS UI ──
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-[var(--color-paper)] font-[var(--font-sans)] text-[var(--color-ink)]">
-        <div className="mx-auto mt-24 w-full max-w-sm rounded-2xl border border-[var(--color-paper-line)] bg-white/60 p-8 shadow-sm">
+      <div className="flex min-h-screen items-start justify-center bg-[var(--color-paper)] px-4 pt-16 font-[var(--font-sans)] text-[var(--color-ink)] sm:items-center sm:pt-0">
+        <div className="w-full max-w-sm rounded-2xl border border-[var(--color-paper-line)] bg-white/60 p-6 shadow-sm sm:p-8">
           <h1 className="mb-1 font-[var(--font-display)] text-3xl font-semibold text-[var(--color-petrol)]">
             PazarioPOS
           </h1>
@@ -288,12 +288,12 @@ export function PosScreen() {
 
   return (
     <div className="min-h-screen bg-[var(--color-paper)] font-[var(--font-sans)] text-[var(--color-ink)]">
-      <header className="flex items-center justify-between bg-[var(--color-petrol)] px-6 py-4 text-[var(--color-paper)] shadow-sm">
-        <h1 className="font-[var(--font-display)] text-2xl font-semibold tracking-tight">
-          PazarioPOS <span className="text-[var(--color-saffron-light)]">— Hızlı Satış</span>
+      <header className="flex flex-wrap items-center justify-between gap-2 bg-[var(--color-petrol)] px-3 py-3 text-[var(--color-paper)] shadow-sm sm:px-6 sm:py-4">
+        <h1 className="font-[var(--font-display)] text-lg font-semibold tracking-tight sm:text-2xl">
+          PazarioPOS <span className="hidden text-[var(--color-saffron-light)] sm:inline">— Hızlı Satış</span>
         </h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-[var(--color-paper)]/80">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <span className="hidden text-sm text-[var(--color-paper)]/80 md:inline">
             {currentUser.name} <span className="text-[var(--color-saffron-light)]">({currentUser.role})</span>
           </span>
           {(currentUser.role === 'admin' || currentUser.role === 'accountant') && (
@@ -318,7 +318,7 @@ export function PosScreen() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl p-6">
+      <div className="mx-auto max-w-6xl p-3 sm:p-6">
         {view === 'backoffice' ? (
           <BackOfficeScreen />
         ) : (

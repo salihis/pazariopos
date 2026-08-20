@@ -198,7 +198,8 @@ function BankAccountsTab() {
             {transactions.length === 0 ? (
               <p className="text-sm text-[var(--color-ink-soft)]">Henüz hareket yok.</p>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
                 <thead>
                   <tr className="receipt-rule text-xs text-[var(--color-ink-soft)]">
                     <th className="pb-2 pt-1 text-left font-medium">Tarih</th>
@@ -218,6 +219,7 @@ function BankAccountsTab() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>
@@ -342,7 +344,8 @@ function ChequesTab() {
         {cheques.length === 0 ? (
           <p className="text-sm text-[var(--color-ink-soft)]">Kayıt bulunamadı.</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead>
               <tr className="receipt-rule text-xs text-[var(--color-ink-soft)]">
                 <th className="pb-2 pt-1 text-left font-medium">Vade</th>
@@ -374,6 +377,7 @@ function ChequesTab() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

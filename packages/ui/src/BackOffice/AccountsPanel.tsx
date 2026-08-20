@@ -284,7 +284,8 @@ export function AccountsPanel() {
             ) : transactions.length === 0 ? (
               <p className="text-sm text-[var(--color-ink-soft)]">Henüz hareket yok.</p>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
                 <thead>
                   <tr className="receipt-rule text-xs text-[var(--color-ink-soft)]">
                     <th className="pb-2 pt-1 text-left font-medium">Tarih</th>
@@ -313,6 +314,7 @@ export function AccountsPanel() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

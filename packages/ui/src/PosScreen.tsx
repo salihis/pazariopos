@@ -20,7 +20,7 @@
 // mechanical-register digit display for the cart total).
 // ─────────────────────────────────────────────────────────────
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 import {
   useSaleStore,
@@ -94,6 +94,9 @@ export function PosScreen() {
   const logout           = useAuthStore(s => s.logout)
 
   const [scanFeedback, setScanFeedback] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [lastReceiptStatus, setLastReceiptStatus] = useState<string | null>(null)
   const [balanceMessage, setBalanceMessage] = useState<string | null>(null)
   const [paymentAmountInput, setPaymentAmountInput] = useState('')
@@ -155,11 +158,59 @@ export function PosScreen() {
   const grandTotal = cart.reduce((sum, l) => sum + l.total, 0)
   const selectedCustomerAccount = customerAccounts.find(a => a.id === customerId) ?? null
 
+  // ── Product search (barcode/manual + name autocomplete) ───
+  const trimmedSearchQuery = searchQuery.trim()
+  const searchSuggestions =
+    trimmedSearchQuery.length >= 3
+      ? products
+          .filter(p => p.name.toLocaleLowerCase('tr').includes(trimmedSearchQuery.toLocaleLowerCase('tr')))
+          .slice(0, 8)
+      : []
+
   // ── Manual add (keyboard-less demo / touch screen) ──────
   const handleQuickAdd = useCallback((product: Product) => {
     addLine(productToCartLine(product))
     setScanFeedback(`Eklendi: ${product.name}`)
   }, [addLine])
+
+  // ── Select a product from the name-search dropdown ──────
+  const handleSelectSearchResult = useCallback((product: Product) => {
+    addLine(productToCartLine(product))
+    setScanFeedback(`Eklendi: ${product.name}`)
+    setSearchQuery('')
+    setShowSuggestions(false)
+    searchInputRef.current?.focus()
+  }, [addLine])
+
+  // ── Manual barcode entry / Enter-to-add from the search box.
+  //    Tries an exact barcode match first (so a barcode scanner
+  //    that types into this field + Enter works identically to
+  //    the global HID/Tauri scan listener above); falls back to
+  //    accepting a single remaining name-search match. ──
+  const handleSearchSubmit = useCallback(() => {
+    const query = searchQuery.trim()
+    if (!query) return
+
+    const product = findByBarcode(query)
+    if (product) {
+      addLine(productToCartLine(product))
+      setScanFeedback(`Eklendi: ${product.name}`)
+      setSearchQuery('')
+      setShowSuggestions(false)
+      searchInputRef.current?.focus()
+      return
+    }
+
+    if (searchSuggestions.length === 1) {
+      const [onlyMatch] = searchSuggestions
+      if (onlyMatch) {
+        handleSelectSearchResult(onlyMatch)
+      }
+      return
+    }
+
+    setScanFeedback(`Bulunamadı: ${query}`)
+  }, [searchQuery, findByBarcode, addLine, searchSuggestions, handleSelectSearchResult])
 
   // ── Record a payment against the selected customer's account
   //    (Cari Hesap Phase 2 — pays down open invoices, oldest first) ──
@@ -339,6 +390,69 @@ export function PosScreen() {
               Okuyucu HID modunda barkodu ve Enter tuşunu otomatik yazar.
               Masaüstünde, fiziksel / seri taramalar Tauri olayları üzerinden gelir.
             </p>
+
+            <div className="relative mb-4">
+              <label className="text-xs font-medium text-[var(--color-ink-soft)]" htmlFor="pos-search">
+                Barkod veya Ürün Adı
+              </label>
+              <input
+                id="pos-search"
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                autoFocus
+                autoComplete="off"
+                placeholder="Barkod okutun veya ürün adı yazın (en az 3 harf)…"
+                onChange={e => {
+                  setSearchQuery(e.target.value)
+                  setShowSuggestions(true)
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSearchSubmit()
+                  } else if (e.key === 'Escape') {
+                    setSearchQuery('')
+                    setShowSuggestions(false)
+                  }
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => {
+                  // Delay so a click on a suggestion below still registers before we hide the list.
+                  window.setTimeout(() => setShowSuggestions(false), 150)
+                }}
+                className="mt-1 w-full rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--color-saffron)] focus:ring-2 focus:ring-[var(--color-saffron)]/30"
+              />
+
+              {showSuggestions && searchSuggestions.length > 0 && (
+                <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-[var(--color-paper-line)] bg-white shadow-lg">
+                  {searchSuggestions.map(product => (
+                    <li key={product.id}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm transition hover:bg-[var(--color-paper-dim)]"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => handleSelectSearchResult(product)}
+                      >
+                        <span>
+                          <span className="font-medium text-[var(--color-ink)]">{product.name}</span>
+                          <span className="ml-2 text-xs text-[var(--color-ink-soft)]">
+                            {product.barcode[0] ?? product.sku}
+                          </span>
+                        </span>
+                        <span className="tabular-money text-[var(--color-petrol)]">{money(product.price)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {showSuggestions && trimmedSearchQuery.length >= 3 && searchSuggestions.length === 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-2 text-sm text-[var(--color-ink-soft)] shadow-lg">
+                  Eşleşen ürün yok.
+                </div>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               {isCatalogLoading && products.length === 0 && (

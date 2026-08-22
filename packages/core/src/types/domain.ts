@@ -319,6 +319,34 @@ export interface ProfitLossReport {
   netProfit: number
 }
 
+// ── Stok Sayım (Physical Inventory Count) ──────────────────────
+// See server/prisma/schema.prisma's StockCount/StockCountItem comment
+// for the draft → completed lifecycle and the "overwrite, not add" semantics.
+
+export type StockCountStatus = 'draft' | 'completed'
+
+export interface StockCountItem {
+  id: string
+  productId: string
+  productName: string   // denormalized snapshot at time of counting
+  productSku: string
+  previousStock: number // Product.stock at the moment this item was (re-)counted
+  countedStock: number
+  countedAt: string      // ISO-8601
+}
+
+export interface StockCount {
+  id: string
+  warehouseId: string
+  status: StockCountStatus
+  userId: string
+  items: StockCountItem[]
+  startedAt: string
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 // ── Auth / Kullanıcı Yönetimi ──────────────────────────────────
 
 export type UserRole = 'admin' | 'accountant' | 'cashier' | 'warehouse' | 'viewer'

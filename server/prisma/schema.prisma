@@ -501,6 +501,64 @@ model Cheque {
   @@map("cheques")
 }
 
+// ── Stok Sayım (Physical Inventory Count) ──────────────────────
+// A count is a server-persisted DRAFT while in progress (so it survives
+// a page refresh, a browser restart, or continuing from a different
+// device — same rationale as CashCount, but this one is a multi-item
+// working session rather than a single snapshot, so it needs its own
+// draft/complete lifecycle instead of being created in one shot).
+//
+// Each scanned/typed product gets AT MOST ONE StockCountItem per count
+// (see @@unique below) — re-scanning the same product just overwrites
+// countedStock with the latest value, since a physical count means
+// "this is now the true quantity", not "add this many".
+//
+// "Sayımı Aktar" (POST /:id/complete) sets Product.stock = countedStock
+// for every item, all inside one transaction — see routes/stockCounts.ts.
+
+enum StockCountStatus {
+  draft
+  completed
+}
+
+model StockCount {
+  id          String           @id @default(uuid())
+  warehouseId String           @default("default") @map("warehouse_id")
+  status      StockCountStatus @default(draft)
+  userId      String           @map("user_id") // who started/owns this count
+
+  items StockCountItem[]
+
+  startedAt   DateTime  @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id           String @id @default(uuid())
+  stockCountId String @map("stock_count_id")
+
+  productId   String @map("product_id")
+  productName String @map("product_name") // denormalized snapshot, same convention as SaleLine
+  productSku  String @map("product_sku")
+
+  previousStock Int @map("previous_stock") // Product.stock at the moment this item was (re-)counted — audit trail
+  countedStock  Int @map("counted_stock")  // physically counted quantity
+
+  countedAt DateTime @updatedAt @map("counted_at") // bumps on re-scan/re-entry, not just first count
+
+  stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+
+  @@unique([stockCountId, productId])
+  @@index([stockCountId])
+  @@map("stock_count_items")
+}
+
 // ── Auth / Kullanıcı Yönetimi — Phase 1-3.
 // Roles mirror ARCHITECTURE.md §8 (Admin, Muhasebe, Kasiyer, Depo,
 // Sadece Görüntüleme). JWT-based, stateless — works identically for

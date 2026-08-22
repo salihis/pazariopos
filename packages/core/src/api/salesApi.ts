@@ -9,6 +9,7 @@ import type {
   Sale, Product, Account, AccountTransaction, AgingReport,
   Category, CashRegister, CashMovement, CashCount, BankAccount, BankTransaction, Cheque,
   CashFlowReport, IncomeExpenseReport, ProfitLossReport, User, Purchase, PaymentLine,
+  StockCount,
 } from '../types/domain'
 
 // packages/core must stay platform-agnostic (see CODING_GUIDELINES.md §2) —
@@ -220,6 +221,44 @@ export const productsApi = {
 }
 
 export type CreateCategoryInput = { name: string; type: Category['type']; parentId?: string }
+
+export const stockCountsApi = {
+  /** Starts a new count, or resumes the caller's existing open draft if one already exists. */
+  start(warehouseId = 'default'): Promise<StockCount> {
+    return request<StockCount>('/api/stock-counts', { method: 'POST', body: JSON.stringify({ warehouseId }) })
+  },
+  /** The caller's currently open draft, if any — null (not an error) if there isn't one. */
+  async getDraft(): Promise<StockCount | null> {
+    try {
+      return await request<StockCount>('/api/stock-counts/draft')
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null
+      throw err
+    }
+  },
+  getStockCount(id: string): Promise<StockCount> {
+    return request<StockCount>(`/api/stock-counts/${id}`)
+  },
+  listStockCounts(status?: StockCount['status']): Promise<StockCount[]> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : ''
+    return request<StockCount[]>(`/api/stock-counts${query}`)
+  },
+  /** Records/overwrites the counted quantity for one product in this count. */
+  upsertItem(stockCountId: string, productId: string, countedStock: number): Promise<StockCount> {
+    return request<StockCount>(`/api/stock-counts/${stockCountId}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ productId, countedStock }),
+    })
+  },
+  /** Removes a mis-scanned item from the count. */
+  removeItem(stockCountId: string, productId: string): Promise<StockCount> {
+    return request<StockCount>(`/api/stock-counts/${stockCountId}/items/${productId}`, { method: 'DELETE' })
+  },
+  /** "Sayımı Aktar" — writes every counted item onto Product.stock and closes the count. */
+  complete(stockCountId: string): Promise<StockCount> {
+    return request<StockCount>(`/api/stock-counts/${stockCountId}/complete`, { method: 'POST' })
+  },
+}
 
 export const categoriesApi = {
   listCategories(type?: Category['type']): Promise<Category[]> {

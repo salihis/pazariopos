@@ -342,7 +342,7 @@ export function PosScreen() {
           <span className="hidden text-sm text-[var(--color-paper)]/80 md:inline">
             {currentUser.name} <span className="text-[var(--color-saffron-light)]">({currentUser.role})</span>
           </span>
-          {(currentUser.role === 'admin' || currentUser.role === 'accountant') && (
+          {(currentUser.role === 'admin' || currentUser.role === 'accountant' || currentUser.role === 'warehouse') && (
             <button
               className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
                 view === 'backoffice'

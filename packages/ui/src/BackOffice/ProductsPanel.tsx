@@ -86,7 +86,25 @@ function toGrossKurus(input: string, taxInclusive: boolean, taxRate: number): nu
   return taxInclusive ? kurus : Math.round(kurus * (1 + taxRate))
 }
 
-export function ProductsPanel() {
+export interface ProductsPanelProps {
+  /**
+   * Pre-fills and auto-opens the create form on mount — used by the Stok
+   * Sayım screen's "Ürün Ekle" redirect when a scanned barcode or typed
+   * name doesn't match any existing product. Ignored once the user has
+   * interacted with the form (only applied on mount, not on every
+   * re-render, so it doesn't fight the user's own edits).
+   */
+  initialCreateValues?: { barcode?: string; name?: string }
+  /**
+   * Fired after a NEW product is successfully saved (not on edits).
+   * The Stok Sayım screen uses this to return to the count and resume
+   * right where the user left off, with the just-created product ready
+   * to be counted.
+   */
+  onProductCreated?: (product: Product) => void
+}
+
+export function ProductsPanel({ initialCreateValues, onProductCreated }: ProductsPanelProps = {}) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [showInactive, setShowInactive] = useState(false)
@@ -120,6 +138,21 @@ export function ProductsPanel() {
   }, [showInactive])
 
   useEffect(() => { void load() }, [load])
+
+  // Apply initialCreateValues exactly once on mount (see ProductsPanelProps
+  // comment) — deliberately an empty dependency array so it doesn't
+  // re-trigger and stomp on the user's own edits as they fill out the form.
+  useEffect(() => {
+    if (!initialCreateValues) return
+    setEditingProduct(null)
+    setForm(f => ({
+      ...f,
+      barcode: initialCreateValues.barcode ?? f.barcode,
+      name: initialCreateValues.name ?? f.name,
+    }))
+    setShowForm(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const mainCategories = useMemo(() => categories.filter(c => !c.parentId), [categories])
   const subCategoriesOf = useCallback(
@@ -366,7 +399,8 @@ export function ProductsPanel() {
           stock: form.addedStock, lowStockThreshold: form.lowStockThreshold,
           unit: form.unit, categoryId, warehouseId: form.warehouseId,
         }
-        await productsApi.createProduct(input)
+        const created = await productsApi.createProduct(input)
+        onProductCreated?.(created)
       }
       setShowForm(false)
       setEditingProduct(null)
@@ -374,7 +408,7 @@ export function ProductsPanel() {
     } catch (err) {
       setMessage(`Hata: ${err instanceof Error ? err.message : String(err)}`)
     }
-  }, [form, editingProduct, load])
+  }, [form, editingProduct, load, onProductCreated])
 
   const handleToggleActive = useCallback(async (p: Product) => {
     if (p.isActive) {

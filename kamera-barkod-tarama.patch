@@ -1,0 +1,341 @@
+diff --git a/packages/ui/package.json b/packages/ui/package.json
+index 72e5459..939ec1d 100644
+--- a/packages/ui/package.json
++++ b/packages/ui/package.json
+@@ -16,6 +16,8 @@
+   },
+   "dependencies": {
+     "@pazariopos/core": "workspace:*",
++    "@zxing/browser": "^0.2.1",
++    "@zxing/library": "^0.23.0",
+     "react": "^19.0.0",
+     "react-dom": "^19.0.0",
+     "xlsx": "^0.18.5"
+diff --git a/packages/ui/src/BackOffice/ProductsPanel.tsx b/packages/ui/src/BackOffice/ProductsPanel.tsx
+index 07abac5..de6e511 100644
+--- a/packages/ui/src/BackOffice/ProductsPanel.tsx
++++ b/packages/ui/src/BackOffice/ProductsPanel.tsx
+@@ -19,6 +19,7 @@ import {
+   type Product, type Category, type CreateProductInput, type UpdateProductInput,
+ } from '@pazariopos/core'
+ import { money } from '../lib/format'
++import { CameraScanner } from '../components/CameraScanner'
+ 
+ const EXCEL_HEADERS = [
+   'Ürün Kodu', 'Barkod', 'Ürün Adı', 'Ana Kategori', 'Alt Kategori', 'Birim',
+@@ -114,6 +115,11 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
+   const [showForm, setShowForm] = useState(false)
+   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+   const [form, setForm] = useState<FormState>(emptyFormState())
++  const [cameraOpen, setCameraOpen] = useState(false)
++  const handleCameraDetected = useCallback((value: string) => {
++    setCameraOpen(false)
++    setForm(f => ({ ...f, barcode: value }))
++  }, [])
+   const [message, setMessage] = useState<string | null>(null)
+ 
+   const [newMainCategoryName, setNewMainCategoryName] = useState('')
+@@ -506,14 +512,21 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
+             {editingProduct ? `Ürünü Düzenle — ${editingProduct.name}` : 'Yeni Ürün Ekle'}
+           </h3>
+ 
+-          {/* Barkod + Yeni Barkod Oluştur */}
+-          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto]">
++          {/* Barkod + Kamerayla Tara + Yeni Barkod Oluştur */}
++          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto_auto]">
+             <div>
+               <label className={labelClass} htmlFor="pf-barcode">Barkod</label>
+               <input id="pf-barcode" type="text" value={form.barcode}
+                 onChange={e => setForm({ ...form, barcode: e.target.value })}
+                 className={inputClass} />
+             </div>
++            <button
++              className="self-end rounded-lg border border-[var(--color-saffron)] bg-[var(--color-saffron)]/10 px-4 py-2 text-sm font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-saffron)]/20"
++              onClick={() => setCameraOpen(true)}
++              type="button"
++            >
++              📷 Kamerayla Tara
++            </button>
+             <button
+               className="self-end rounded-lg bg-[var(--color-petrol)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+               onClick={handleGenerateBarcode}
+@@ -523,6 +536,14 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
+             </button>
+           </div>
+ 
++          {cameraOpen && (
++            <CameraScanner
++              title="Kamerayla Barkod Tara"
++              onDetected={handleCameraDetected}
++              onClose={() => setCameraOpen(false)}
++            />
++          )}
++
+           {/* Ürün Adı */}
+           <div className="mb-3">
+             <label className={labelClass} htmlFor="pf-name">Ürün Adı</label>
+diff --git a/packages/ui/src/BackOffice/StockCountScreen.tsx b/packages/ui/src/BackOffice/StockCountScreen.tsx
+index 0d8dc30..f87c222 100644
+--- a/packages/ui/src/BackOffice/StockCountScreen.tsx
++++ b/packages/ui/src/BackOffice/StockCountScreen.tsx
+@@ -27,6 +27,7 @@ import {
+ } from '@pazariopos/core'
+ import { formatDate } from '../lib/format'
+ import { ProductsPanel } from './ProductsPanel'
++import { CameraScanner } from '../components/CameraScanner'
+ 
+ export function StockCountScreen() {
+   const products         = useInventoryStore(s => s.products)
+@@ -90,22 +91,22 @@ export function StockCountScreen() {
+     stageProduct(product)
+   }, [stageProduct])
+ 
+-  const handleSearchSubmit = useCallback(() => {
+-    const query = searchQuery.trim()
+-    if (!query) return
+-
++  // ── Shared "resolve a raw scanned/typed value" step — used by the
++  //    manual search box (Enter key) and by the camera scanner below,
++  //    so both input methods behave identically. ──
++  const resolveScannedValue = useCallback((query: string, suggestions: Product[]) => {
+     const product = findByBarcode(query)
+     if (product) {
+       stageProduct(product)
+       return
+     }
+ 
+-    if (searchSuggestions.length === 1) {
+-      const [onlyMatch] = searchSuggestions
++    if (suggestions.length === 1) {
++      const [onlyMatch] = suggestions
+       if (onlyMatch) { stageProduct(onlyMatch); return }
+     }
+ 
+-    if (searchSuggestions.length > 1) {
++    if (suggestions.length > 1) {
+       // Ambiguous name match — keep the dropdown open instead of guessing.
+       setShowSuggestions(true)
+       return
+@@ -118,7 +119,23 @@ export function StockCountScreen() {
+     setCreatingProduct(looksLikeBarcode ? { barcode: query } : { name: query })
+     setSearchQuery('')
+     setShowSuggestions(false)
+-  }, [searchQuery, findByBarcode, searchSuggestions, stageProduct])
++  }, [findByBarcode, stageProduct])
++
++  const handleSearchSubmit = useCallback(() => {
++    const query = searchQuery.trim()
++    if (!query) return
++    resolveScannedValue(query, searchSuggestions)
++  }, [searchQuery, searchSuggestions, resolveScannedValue])
++
++  // ── Camera scan (phones without a hardware scanner, or a PC webcam).
++  //    A decoded value has no "3+ character name" suggestions to fall
++  //    back to, so it only ever resolves via exact barcode match or the
++  //    "ürün bulunamadı → yeni ürün oluştur" redirect. ──
++  const [cameraOpen, setCameraOpen] = useState(false)
++  const handleCameraDetected = useCallback((value: string) => {
++    setCameraOpen(false)
++    resolveScannedValue(value, [])
++  }, [resolveScannedValue])
+ 
+   const handleConfirmQuantity = useCallback(async () => {
+     if (!activeProduct) return
+@@ -255,6 +272,20 @@ export function StockCountScreen() {
+             disabled={!!activeProduct}
+             className={`${inputClass} disabled:opacity-50`}
+           />
++          <button
++            type="button"
++            disabled={!!activeProduct}
++            onClick={() => setCameraOpen(true)}
++            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--color-saffron)] bg-[var(--color-saffron)]/10 px-3 py-2 text-sm font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-saffron)]/20 disabled:opacity-50"
++          >
++            📷 Kamerayla Tara
++          </button>
++          {cameraOpen && (
++            <CameraScanner
++              onDetected={handleCameraDetected}
++              onClose={() => setCameraOpen(false)}
++            />
++          )}
+           {showSuggestions && trimmedSearchQuery.length >= 3 && searchSuggestions.length > 0 && (
+             <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-[var(--color-paper-line)] bg-white shadow-md">
+               {searchSuggestions.map(product => (
+diff --git a/packages/ui/src/PosScreen.tsx b/packages/ui/src/PosScreen.tsx
+index fe24af2..dc3b5ba 100644
+--- a/packages/ui/src/PosScreen.tsx
++++ b/packages/ui/src/PosScreen.tsx
+@@ -35,6 +35,7 @@ import {
+ } from '@pazariopos/core'
+ import { money, parseMoneyInput } from './lib/format'
+ import { BackOfficeScreen } from './BackOffice/BackOfficeScreen'
++import { CameraScanner } from './components/CameraScanner'
+ 
+ function productToCartLine(product: Product, quantity = 1): CartLine {
+   const discountAmount = 0
+@@ -177,15 +178,12 @@ export function PosScreen() {
+     searchInputRef.current?.focus()
+   }, [addLine])
+ 
+-  // ── Manual barcode entry / Enter-to-add from the search box.
+-  //    Tries an exact barcode match first (so a barcode scanner
+-  //    that types into this field + Enter works identically to
+-  //    the global HID/Tauri scan listener above); falls back to
+-  //    accepting a single remaining name-search match. ──
+-  const handleSearchSubmit = useCallback(() => {
+-    const query = searchQuery.trim()
+-    if (!query) return
+-
++  // ── Shared "resolve a raw scanned/typed value to a product" step.
++  //    Used by the manual search box (Enter key), the global HID/Tauri
++  //    listener above, AND the camera scanner below — all three paths
++  //    funnel through the same exact-barcode-then-name-fallback logic
++  //    so behaviour never diverges between input methods. ──
++  const resolveScannedValue = useCallback((query: string, suggestions: Product[]) => {
+     const product = findByBarcode(query)
+     if (product) {
+       addLine(productToCartLine(product))
+@@ -196,8 +194,8 @@ export function PosScreen() {
+       return
+     }
+ 
+-    if (searchSuggestions.length === 1) {
+-      const [onlyMatch] = searchSuggestions
++    if (suggestions.length === 1) {
++      const [onlyMatch] = suggestions
+       if (onlyMatch) {
+         handleSelectSearchResult(onlyMatch)
+       }
+@@ -205,7 +203,27 @@ export function PosScreen() {
+     }
+ 
+     setScanFeedback(`Bulunamadı: ${query}`)
+-  }, [searchQuery, findByBarcode, addLine, searchSuggestions, handleSelectSearchResult])
++  }, [findByBarcode, addLine, handleSelectSearchResult])
++
++  // ── Manual barcode entry / Enter-to-add from the search box.
++  //    Tries an exact barcode match first (so a barcode scanner
++  //    that types into this field + Enter works identically to
++  //    the global HID/Tauri scan listener above); falls back to
++  //    accepting a single remaining name-search match. ──
++  const handleSearchSubmit = useCallback(() => {
++    const query = searchQuery.trim()
++    if (!query) return
++    resolveScannedValue(query, searchSuggestions)
++  }, [searchQuery, searchSuggestions, resolveScannedValue])
++
++  // ── Camera scan (phones without a hardware scanner, or a PC webcam).
++  //    A decoded value never has a "3+ character name" fallback set to
++  //    match against, so it only ever resolves via exact barcode match. ──
++  const [cameraOpen, setCameraOpen] = useState(false)
++  const handleCameraDetected = useCallback((value: string) => {
++    setCameraOpen(false)
++    resolveScannedValue(value, [])
++  }, [resolveScannedValue])
+ 
+   // ── Record a payment against the selected customer's account
+   //    (Cari Hesap Phase 2 — pays down open invoices, oldest first) ──
+@@ -384,8 +402,24 @@ export function PosScreen() {
+             <p className="mb-4 text-xs leading-relaxed text-[var(--color-ink-soft)]">
+               Okuyucu HID modunda barkodu ve Enter tuşunu otomatik yazar.
+               Masaüstünde, fiziksel / seri taramalar Tauri olayları üzerinden gelir.
++              Fiziksel okuyucu yoksa (özellikle mobilde) kamerayla tarayabilirsiniz.
+             </p>
+ 
++            <button
++              type="button"
++              onClick={() => setCameraOpen(true)}
++              className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--color-saffron)] bg-[var(--color-saffron)]/10 px-3 py-2 text-sm font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-saffron)]/20"
++            >
++              📷 Kamerayla Tara
++            </button>
++
++            {cameraOpen && (
++              <CameraScanner
++                onDetected={handleCameraDetected}
++                onClose={() => setCameraOpen(false)}
++              />
++            )}
++
+             <div className="relative mb-4">
+               <label className="text-xs font-medium text-[var(--color-ink-soft)]" htmlFor="pos-search">
+                 Barkod veya Ürün Adı
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 8b90576..a9c0eb2 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -149,6 +149,12 @@ importers:
+       '@pazariopos/core':
+         specifier: workspace:*
+         version: link:../core
++      '@zxing/browser':
++        specifier: ^0.2.1
++        version: 0.2.1(@zxing/library@0.23.0)
++      '@zxing/library':
++        specifier: ^0.23.0
++        version: 0.23.0
+       react:
+         specifier: ^19.0.0
+         version: 19.2.7
+@@ -1411,6 +1417,18 @@ packages:
+   '@vitest/utils@2.1.9':
+     resolution: {integrity: sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ==}
+ 
++  '@zxing/browser@0.2.1':
++    resolution: {integrity: sha512-92pVfVDUXbc15xu9vIEmhNyqIEASMEkDF92CwT6T+7sg2EHXJRktH9CQKoQSXe51UtbNsj+Fm09H/JBWHMs/Sw==}
++    peerDependencies:
++      '@zxing/library': ^0.23.0
++
++  '@zxing/library@0.23.0':
++    resolution: {integrity: sha512-6fkkoFwP8CHxl6ugnPsj74PLJgX2iRv5zczGAyt5OBzQgxFhuhF0NCEc4t4OvSr8xAv2MRLlI0Iu9ZGDZQ2urA==}
++    engines: {node: '>= 24.0.0'}
++
++  '@zxing/text-encoding@0.9.0':
++    resolution: {integrity: sha512-U/4aVJ2mxI0aDNI8Uq0wEhMgY+u4CNtEb0om3+y3+niDAsoTCOB33UF0sxpzqzdqXLqmvc+vZyAt4O8pPdfkwA==}
++
+   abort-controller@3.0.0:
+     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
+     engines: {node: '>=6.5'}
+@@ -2710,6 +2728,10 @@ packages:
+     peerDependencies:
+       typescript: '>=4.8.4'
+ 
++  ts-custom-error@3.3.1:
++    resolution: {integrity: sha512-5OX1tzOjxWEgsr/YEUWSuPrQ00deKLh6D7OTWcvNHm12/7QPyRh8SYpyWvA4IZv8H/+GQWQEh/kwo95Q9OVW1A==}
++    engines: {node: '>=14.0.0'}
++
+   ts-interface-checker@0.1.13:
+     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
+ 
+@@ -3898,6 +3920,21 @@ snapshots:
+       loupe: 3.2.1
+       tinyrainbow: 1.2.0
+ 
++  '@zxing/browser@0.2.1(@zxing/library@0.23.0)':
++    dependencies:
++      '@zxing/library': 0.23.0
++    optionalDependencies:
++      '@zxing/text-encoding': 0.9.0
++
++  '@zxing/library@0.23.0':
++    dependencies:
++      ts-custom-error: 3.3.1
++    optionalDependencies:
++      '@zxing/text-encoding': 0.9.0
++
++  '@zxing/text-encoding@0.9.0':
++    optional: true
++
+   abort-controller@3.0.0:
+     dependencies:
+       event-target-shim: 5.0.1
+@@ -5201,6 +5238,8 @@ snapshots:
+     dependencies:
+       typescript: 5.9.3
+ 
++  ts-custom-error@3.3.1: {}
++
+   ts-interface-checker@0.1.13: {}
+ 
+   tsup@8.5.1(jiti@2.7.0)(postcss@8.5.19)(tsx@4.23.1)(typescript@5.9.3):

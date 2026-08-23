@@ -11,6 +11,7 @@ RUN npm install -g pnpm@9.7.0
 WORKDIR /repo
 COPY . .
 RUN pnpm install --frozen-lockfile
+ENV NODE_OPTIONS=--max-old-space-size=1536
 RUN pnpm turbo run build --filter=@pazariopos/web
 
 FROM nginx:alpine AS runtime

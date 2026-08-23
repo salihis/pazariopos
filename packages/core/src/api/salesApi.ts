@@ -252,11 +252,11 @@ export const stockCountsApi = {
   },
   /** Removes a mis-scanned item from the count. */
   removeItem(stockCountId: string, productId: string): Promise<StockCount> {
-    return request<StockCount>(`/api/stock-counts/${stockCountId}/items/${productId}`, { method: 'DELETE' })
+    return request<StockCount>(`/api/stock-counts/${stockCountId}/items/${productId}`, { method: 'DELETE', body: JSON.stringify({}) })
   },
   /** "Sayımı Aktar" — writes every counted item onto Product.stock and closes the count. */
   complete(stockCountId: string): Promise<StockCount> {
-    return request<StockCount>(`/api/stock-counts/${stockCountId}/complete`, { method: 'POST' })
+    return request<StockCount>(`/api/stock-counts/${stockCountId}/complete`, { method: 'POST', body: JSON.stringify({}) })
   },
 }
 

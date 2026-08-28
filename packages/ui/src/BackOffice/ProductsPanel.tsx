@@ -111,6 +111,11 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
   const [showInactive, setShowInactive] = useState(false)
   const [search, setSearch] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [listCameraOpen, setListCameraOpen] = useState(false)
+  const handleListCameraDetected = useCallback((value: string) => {
+    setListCameraOpen(false)
+    setSearch(value)
+  }, [])
 
   const [showForm, setShowForm] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
@@ -428,7 +433,8 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
   const filtered = products.filter(p =>
     !search.trim() ||
     p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku.toLowerCase().includes(search.toLowerCase()),
+    p.sku.toLowerCase().includes(search.toLowerCase()) ||
+    p.barcode.some(b => b.toLowerCase().includes(search.toLowerCase())),
   )
 
   const inputClass = 'w-full rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--color-saffron)]'
@@ -439,11 +445,25 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-4">
         <input
           type="text"
-          placeholder="Ara (ad veya ürün kodu)"
+          placeholder="Ara (ad, ürün kodu veya barkod)"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="flex-1 rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--color-saffron)]"
         />
+        <button
+          className="rounded-lg border border-[var(--color-saffron)] bg-[var(--color-saffron)]/10 px-3 py-2 text-sm font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-saffron)]/20"
+          onClick={() => setListCameraOpen(true)}
+          type="button"
+        >
+          📷 Kamerayla Tara
+        </button>
+        {listCameraOpen && (
+          <CameraScanner
+            title="Kamerayla Ürün Ara"
+            onDetected={handleListCameraDetected}
+            onClose={() => setListCameraOpen(false)}
+          />
+        )}
         <button
           className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
             showInactive ? 'bg-[var(--color-copper)] text-white' : 'border border-[var(--color-paper-line)] bg-white'

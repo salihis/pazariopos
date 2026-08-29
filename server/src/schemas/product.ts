@@ -19,6 +19,7 @@ export const createProductSchema = z.object({
   lowStockThreshold: z.number().int().nonnegative().default(0),
   unit: z.enum(['piece', 'box', 'kg', 'lt']).default('piece'),
   categoryId: z.string().nullable().optional(),
+  quickSaleGroupId: z.string().nullable().optional(),
   warehouseId: z.string().default('default'),
 })
 
@@ -35,6 +36,7 @@ export const updateProductSchema = z.object({
   lowStockThreshold: z.number().int().nonnegative(),
   unit: z.enum(['piece', 'box', 'kg', 'lt']),
   categoryId: z.string().nullable().optional(),
+  quickSaleGroupId: z.string().nullable().optional(),
   warehouseId: z.string(),
 })
 

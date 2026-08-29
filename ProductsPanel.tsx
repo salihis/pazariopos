@@ -15,8 +15,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
-  productsApi, categoriesApi, quickSaleGroupsApi,
-  type Product, type Category, type QuickSaleGroup, type CreateProductInput, type UpdateProductInput,
+  productsApi, categoriesApi,
+  type Product, type Category, type CreateProductInput, type UpdateProductInput,
 } from '@pazariopos/core'
 import { money } from '../lib/format'
 import { CameraScanner } from '../components/CameraScanner'
@@ -64,7 +64,6 @@ type FormState = {
   lowStockThreshold: number
   mainCategoryId: string | null
   subCategoryId: string | null
-  quickSaleGroupId: string | null
   addedStock: number
   warehouseId: string
 }
@@ -76,7 +75,6 @@ function emptyFormState(): FormState {
     priceInput: '', priceTaxInclusive: true,
     taxRate: 0.18, lowStockThreshold: 0,
     mainCategoryId: null, subCategoryId: null,
-    quickSaleGroupId: null,
     addedStock: 0, warehouseId: 'default',
   }
 }
@@ -110,7 +108,6 @@ export interface ProductsPanelProps {
 export function ProductsPanel({ initialCreateValues, onProductCreated }: ProductsPanelProps = {}) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [quickSaleGroups, setQuickSaleGroups] = useState<QuickSaleGroup[]>([])
   const [showInactive, setShowInactive] = useState(false)
   const [search, setSearch] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -132,7 +129,6 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
 
   const [newMainCategoryName, setNewMainCategoryName] = useState('')
   const [newSubCategoryName, setNewSubCategoryName] = useState('')
-  const [newQuickSaleGroupName, setNewQuickSaleGroupName] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -141,14 +137,12 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
   const load = useCallback(async () => {
     setIsLoading(true)
     try {
-      const [p, c, g] = await Promise.all([
+      const [p, c] = await Promise.all([
         productsApi.listProducts(showInactive),
         categoriesApi.listCategories('product'),
-        quickSaleGroupsApi.listQuickSaleGroups(),
       ])
       setProducts(p)
       setCategories(c)
-      setQuickSaleGroups(g)
     } finally {
       setIsLoading(false)
     }
@@ -347,7 +341,6 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
       taxRate: p.taxRate,
       lowStockThreshold: p.lowStockThreshold,
       mainCategoryId, subCategoryId,
-      quickSaleGroupId: p.quickSaleGroupId,
       addedStock: 0,
       warehouseId: p.warehouseId,
     })
@@ -382,14 +375,6 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
     setForm(f => ({ ...f, subCategoryId: cat.id }))
   }, [newSubCategoryName, form.mainCategoryId, load])
 
-  const handleCreateQuickSaleGroup = useCallback(async () => {
-    if (!newQuickSaleGroupName.trim()) return
-    const group = await quickSaleGroupsApi.createQuickSaleGroup({ name: newQuickSaleGroupName.trim() })
-    setNewQuickSaleGroupName('')
-    await load()
-    setForm(f => ({ ...f, quickSaleGroupId: group.id }))
-  }, [newQuickSaleGroupName, load])
-
   const handleSave = useCallback(async () => {
     setMessage(null)
     if (!form.name.trim()) { setMessage('Ürün adı zorunlu.'); return }
@@ -411,7 +396,7 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
           barcode: form.barcode ? [form.barcode] : [],
           price, costPrice, taxRate: form.taxRate,
           lowStockThreshold: form.lowStockThreshold, unit: form.unit,
-          categoryId, quickSaleGroupId: form.quickSaleGroupId, warehouseId: form.warehouseId,
+          categoryId, warehouseId: form.warehouseId,
         }
         await productsApi.updateProduct(editingProduct.id, input)
         if (form.addedStock > 0) {
@@ -423,7 +408,7 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
           barcode: form.barcode ? [form.barcode] : [],
           price, costPrice, taxRate: form.taxRate,
           stock: form.addedStock, lowStockThreshold: form.lowStockThreshold,
-          unit: form.unit, categoryId, quickSaleGroupId: form.quickSaleGroupId, warehouseId: form.warehouseId,
+          unit: form.unit, categoryId, warehouseId: form.warehouseId,
         }
         const created = await productsApi.createProduct(input)
         onProductCreated?.(created)
@@ -686,27 +671,6 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
             </div>
           </div>
 
-          {/* Hızlı Ürün Grubu — kategoriden bağımsız, sadece Hızlı Satış
-              ekranındaki "Hızlı Ürünler" kutucuk grid'inde bu ürünün
-              görünüp görünmeyeceğini ve hangi sekmede çıkacağını belirler. */}
-          <div className="mb-3">
-            <label className={labelClass} htmlFor="pf-quick-group">
-              Hızlı Ürün Grubu <span className="font-normal text-[var(--color-ink-soft)]">(Hızlı Satış ekranında gösterilecekse seçin)</span>
-            </label>
-            <select id="pf-quick-group" value={form.quickSaleGroupId ?? ''}
-              onChange={e => setForm({ ...form, quickSaleGroupId: e.target.value || null })}
-              className={inputClass}>
-              <option value="">Hızlı Satış'ta gösterme</option>
-              {quickSaleGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-            <div className="mt-1.5 flex gap-1.5">
-              <input type="text" placeholder="+ yeni hızlı ürün grubu" value={newQuickSaleGroupName}
-                onChange={e => setNewQuickSaleGroupName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') void handleCreateQuickSaleGroup() }}
-                className="flex-1 rounded-lg border border-[var(--color-paper-line)] bg-white px-2.5 py-1 text-xs outline-none focus:border-[var(--color-saffron)]" />
-            </div>
-          </div>
-
           {/* Mevcut Stok | Eklenen Stok */}
           <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
@@ -759,7 +723,6 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
                 <th className="pb-2 pt-1 text-left font-medium">Ürün Kodu</th>
                 <th className="pb-2 pt-1 text-left font-medium">Ad</th>
                 <th className="pb-2 pt-1 text-left font-medium">Kategori</th>
-                <th className="pb-2 pt-1 text-left font-medium">Hızlı Ürün Grubu</th>
                 <th className="pb-2 pt-1 text-right font-medium">Alış</th>
                 <th className="pb-2 pt-1 text-right font-medium">Satış</th>
                 <th className="pb-2 pt-1 text-right font-medium">Stok</th>
@@ -772,9 +735,6 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
                   <td className="py-1.5 text-xs text-[var(--color-ink-soft)]">{p.sku}</td>
                   <td className="py-1.5">{p.name}{!p.isActive && <span className="ml-1.5 text-xs text-[var(--color-copper)]">(pasif)</span>}</td>
                   <td className="py-1.5 text-xs text-[var(--color-ink-soft)]">{categoryPath(p.categoryId)}</td>
-                  <td className="py-1.5 text-xs text-[var(--color-ink-soft)]">
-                    {p.quickSaleGroupId ? (quickSaleGroups.find(g => g.id === p.quickSaleGroupId)?.name ?? '—') : '—'}
-                  </td>
                   <td className="tabular-money py-1.5 text-right text-xs text-[var(--color-ink-soft)]">{p.costPrice != null ? money(p.costPrice) : '—'}</td>
                   <td className="tabular-money py-1.5 text-right">{money(p.price)}</td>
                   <td className={`tabular-money py-1.5 text-right ${p.stock <= p.lowStockThreshold ? 'text-[var(--color-copper)]' : ''}`}>{p.stock}</td>

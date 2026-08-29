@@ -1,0 +1,142 @@
+diff --git a/packages/ui/src/components/CameraScanner.tsx b/packages/ui/src/components/CameraScanner.tsx
+index 3bfb37a..8dcd070 100644
+--- a/packages/ui/src/components/CameraScanner.tsx
++++ b/packages/ui/src/components/CameraScanner.tsx
+@@ -31,6 +31,27 @@
+ import { useEffect, useRef, useState, useCallback } from 'react'
+ import { BrowserMultiFormatReader } from '@zxing/browser'
+ import type { IScannerControls } from '@zxing/browser'
++import { BarcodeFormat, DecodeHintType } from '@zxing/library'
++
++// Restrict decoding to the formats actually used by product barcodes (+ QR,
++// since some suppliers/receipts use it). ZXing's default reader tries EVERY
++// known format on every single frame, which is the single biggest cause of
++// "slow to detect / sometimes never detects" on a mid-range phone camera —
++// narrowing the format list cuts per-frame decode work substantially.
++const HINTS = new Map()
++HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
++  BarcodeFormat.EAN_13,
++  BarcodeFormat.EAN_8,
++  BarcodeFormat.UPC_A,
++  BarcodeFormat.UPC_E,
++  BarcodeFormat.CODE_128,
++  BarcodeFormat.CODE_39,
++  BarcodeFormat.QR_CODE,
++])
++// TRY_HARDER trades some speed for materially better detection of tilted /
++// partially-lit / lower-contrast codes — worth it now that POSSIBLE_FORMATS
++// above has already cut the per-frame format list down to size.
++HINTS.set(DecodeHintType.TRY_HARDER, true)
+ 
+ export interface CameraScannerProps {
+   /** Called once with the decoded barcode/QR text. The modal closes right after. */
+@@ -56,26 +77,30 @@ export function CameraScanner({ onDetected, onClose, title }: CameraScannerProps
+   const [deviceId, setDeviceId] = useState<string | undefined>(undefined)
+ 
+   const detectedRef = useRef(false)
++  const [torchOn, setTorchOn] = useState(false)
++  const [torchSupported, setTorchSupported] = useState(false)
+ 
+   const start = useCallback(async (preferredDeviceId?: string) => {
+     setError(null)
+     setReady(false)
++    setTorchOn(false)
++    setTorchSupported(false)
+     detectedRef.current = false
+ 
+-    const reader = new BrowserMultiFormatReader()
++    const reader = new BrowserMultiFormatReader(HINTS)
+ 
+     try {
+-      // No explicit deviceId yet → let the browser pick, preferring the
+-      // rear/environment camera (the only sane default on a phone; on a
+-      // PC with one webcam this constraint is simply ignored).
+-      const constraints: MediaStreamConstraints = preferredDeviceId
+-        ? { video: { deviceId: { exact: preferredDeviceId } } }
+-        : { video: { facingMode: { ideal: 'environment' } } }
++      // ideal (not exact/min) resolution: high enough that a small EAN-13
++      // isn't a blur of a handful of pixels, low enough that decoding each
++      // frame doesn't itself become the bottleneck on a budget phone.
++      const videoConstraints: MediaTrackConstraints = preferredDeviceId
++        ? { deviceId: { exact: preferredDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
++        : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+ 
+       if (!videoRef.current) return
+ 
+       controlsRef.current = await reader.decodeFromConstraints(
+-        constraints,
++        { video: videoConstraints },
+         videoRef.current,
+         (result, err) => {
+           if (result && !detectedRef.current) {
+@@ -98,6 +123,28 @@ export function CameraScanner({ onDetected, onClose, title }: CameraScannerProps
+ 
+       setReady(true)
+ 
++      // Continuous autofocus: many Android/Chrome cameras default to a
++      // single fixed focus grab on stream start, which is fine for a photo
++      // but keeps a close-up barcode soft/blurry the whole session. Ask for
++      // continuous focus where supported — this is a non-standard
++      // capability so it's wrapped defensively and never blocks scanning
++      // if the browser/device doesn't support it.
++      const stream = videoRef.current.srcObject
++      if (stream instanceof MediaStream) {
++        const [track] = stream.getVideoTracks()
++        if (track) {
++          const capabilities = track.getCapabilities?.() as (MediaTrackCapabilities & { focusMode?: string[]; torch?: boolean }) | undefined
++          if (capabilities?.focusMode?.includes('continuous')) {
++            try {
++              await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as unknown as MediaTrackConstraintSet] })
++            } catch {
++              // Non-fatal — camera still works, just without continuous AF.
++            }
++          }
++          setTorchSupported(!!capabilities?.torch)
++        }
++      }
++
+       // Populate the device list once permission is granted (labels are
+       // blank until then) so a PC with more than one webcam can switch.
+       const inputs = await BrowserMultiFormatReader.listVideoInputDevices()
+@@ -134,6 +181,20 @@ export function CameraScanner({ onDetected, onClose, title }: CameraScannerProps
+     void start(nextId)
+   }, [start])
+ 
++  const handleToggleTorch = useCallback(async () => {
++    const stream = videoRef.current?.srcObject
++    if (!(stream instanceof MediaStream)) return
++    const [track] = stream.getVideoTracks()
++    if (!track) return
++    const next = !torchOn
++    try {
++      await track.applyConstraints({ advanced: [{ torch: next } as unknown as MediaTrackConstraintSet] })
++      setTorchOn(next)
++    } catch {
++      // Device claimed torch support but rejected the constraint — ignore.
++    }
++  }, [torchOn])
++
+   return (
+     <div
+       role="dialog"
+@@ -182,6 +243,20 @@ export function CameraScanner({ onDetected, onClose, title }: CameraScannerProps
+           </p>
+         )}
+ 
++        {torchSupported && !error && (
++          <button
++            type="button"
++            onClick={() => void handleToggleTorch()}
++            className={`mt-3 flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${
++              torchOn
++                ? 'border-[var(--color-saffron)] bg-[var(--color-saffron)]/20 text-[var(--color-petrol)]'
++                : 'border-[var(--color-paper-line)] bg-white text-[var(--color-ink-soft)] hover:bg-black/5'
++            }`}
++          >
++            {torchOn ? '🔦 Feneri Kapat' : '🔦 Fener (düşük ışıkta yardımcı olur)'}
++          </button>
++        )}
++
+         {devices.length > 1 && (
+           <select
+             value={deviceId ?? ''}

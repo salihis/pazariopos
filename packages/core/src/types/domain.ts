@@ -17,8 +17,22 @@ export interface Product {
   lowStockThreshold: number   // stock at/below this triggers a low-stock warning
   unit: 'piece' | 'box' | 'kg' | 'lt'
   categoryId: string | null
+  // Independent of categoryId (the Ana/Alt Kategori accounting tree) —
+  // only controls whether/where this product appears in the POS "Hızlı
+  // Ürünler" quick-add grid. Left null, the product never shows there,
+  // which matters with a large catalog (curated top-sellers only).
+  quickSaleGroupId: string | null
   warehouseId: string
   isActive: boolean
+}
+
+// Flat group used only to tag products for the POS quick-add grid — see
+// Product.quickSaleGroupId.
+export interface QuickSaleGroup {
+  id: string
+  name: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface CartLine {

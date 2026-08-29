@@ -33,6 +33,7 @@ import { accountsRoutes }      from './routes/accounts'
 import { productsRoutes }      from './routes/products'
 import { stockCountsRoutes }   from './routes/stockCounts'
 import { categoriesRoutes }    from './routes/categories'
+import { quickSaleGroupsRoutes } from './routes/quickSaleGroups'
 import { cashRegistersRoutes } from './routes/cashRegisters'
 import { bankAccountsRoutes }  from './routes/bankAccounts'
 import { chequesRoutes }       from './routes/cheques'
@@ -76,6 +77,7 @@ async function buildServer() {
   await app.register(productsRoutes,      { prefix: '/api/products' })
   await app.register(stockCountsRoutes,   { prefix: '/api/stock-counts' })
   await app.register(categoriesRoutes,    { prefix: '/api/categories' })
+  await app.register(quickSaleGroupsRoutes, { prefix: '/api/quick-sale-groups' })
   await app.register(cashRegistersRoutes, { prefix: '/api/cash-registers' })
   await app.register(bankAccountsRoutes,  { prefix: '/api/bank-accounts' })
   await app.register(chequesRoutes,       { prefix: '/api/cheques' })

@@ -21,6 +21,7 @@ export function toDomainProduct(row: PrismaProduct): Product {
     lowStockThreshold: row.lowStockThreshold,
     unit: row.unit,
     categoryId: row.categoryId,
+    quickSaleGroupId: row.quickSaleGroupId,
     warehouseId: row.warehouseId,
     isActive: row.isActive,
   }

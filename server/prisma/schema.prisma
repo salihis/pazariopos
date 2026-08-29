@@ -61,12 +61,34 @@ model Product {
 
   category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
+  // Independent from `category` (which is the accounting-oriented Gelir/Gider
+  // product tree). This only controls whether/where a product shows up in
+  // the POS "Hızlı Ürünler" quick-add grid — with ~1000 SKUs in the catalog,
+  // that grid needs its own opt-in curation (top sellers), separate from
+  // whatever category structure the back office uses for reporting.
+  quickSaleGroupId String?          @map("quick_sale_group_id")
+  quickSaleGroup   QuickSaleGroup?  @relation(fields: [quickSaleGroupId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([warehouseId])
   @@index([categoryId])
+  @@index([quickSaleGroupId])
   @@map("products")
+}
+
+// Flat (no hierarchy — deliberately simpler than Category's Ana/Alt tree,
+// since its only job is "which quick-add tab does this product sit under").
+model QuickSaleGroup {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("quick_sale_groups")
 }
 
 // ── Sale ─────────────────────────────────────────────────────

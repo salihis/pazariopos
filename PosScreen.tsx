@@ -30,10 +30,8 @@ import {
   getBarcodeService,
   getPrinterService,
   OfflineBalanceError,
-  quickSaleGroupsApi,
   type Product,
   type CartLine,
-  type QuickSaleGroup,
 } from '@pazariopos/core'
 import { money, parseMoneyInput } from './lib/format'
 import { BackOfficeScreen } from './BackOffice/BackOfficeScreen'
@@ -226,32 +224,6 @@ export function PosScreen() {
     setCameraOpen(false)
     resolveScannedValue(value, [])
   }, [resolveScannedValue])
-
-  // ── "Hızlı Ürünler" group tabs — with ~1000 SKUs in the catalog, only
-  //    products explicitly tagged with a Hızlı Ürün Grubu (an admin
-  //    opt-in, set on the Ürünler page — independent of Category/Ana
-  //    Kategori, which is the accounting-oriented tree) show up here at
-  //    all. An untagged product simply never appears in this section,
-  //    by design — that's the whole point of the field: curate the
-  //    high-sellers instead of dumping the entire catalog on the
-  //    cashier. ──
-  const [quickSaleGroups, setQuickSaleGroups] = useState<QuickSaleGroup[]>([])
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    quickSaleGroupsApi.listQuickSaleGroups()
-      .then(groups => { if (!cancelled) setQuickSaleGroups(groups) })
-      .catch(() => { /* Group tabs are a nice-to-have — silently skip if this fails. */ })
-    return () => { cancelled = true }
-  }, [])
-
-  const taggedForQuickSale = products.filter(p => p.quickSaleGroupId !== null)
-  const groupsInUse = quickSaleGroups.filter(g => taggedForQuickSale.some(p => p.quickSaleGroupId === g.id))
-
-  const quickAddProducts = selectedGroupId === null
-    ? taggedForQuickSale
-    : taggedForQuickSale.filter(p => p.quickSaleGroupId === selectedGroupId)
 
   // ── Record a payment against the selected customer's account
   //    (Cari Hesap Phase 2 — pays down open invoices, oldest first) ──
@@ -529,70 +501,33 @@ export function PosScreen() {
 
             {/* ── Quick-add tiles — tap a frequently-sold item instead of
                  scanning it. Reuses the same add-to-cart path as a
-                 search-result click, so quantities merge identically.
-                 Group tabs (from the "Ana Kategori" set up on the
-                 Ürünler page) filter which products show here. ── */}
-            {taggedForQuickSale.length > 0 && (
+                 search-result click, so quantities merge identically. ── */}
+            {products.length > 0 && (
               <section className="rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-4">
                 <h2 className="mb-3 font-[var(--font-display)] text-sm font-semibold text-[var(--color-petrol)]">
                   Hızlı Ürünler
                 </h2>
-
-                {groupsInUse.length > 0 && (
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedGroupId(null)}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                        selectedGroupId === null
-                          ? 'border-[var(--color-petrol)] bg-[var(--color-petrol)] text-white'
-                          : 'border-[var(--color-paper-line)] bg-white text-[var(--color-ink-soft)] hover:border-[var(--color-petrol)]'
-                      }`}
-                    >
-                      Tümü
-                    </button>
-                    {groupsInUse.map(group => (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {products.slice(0, 12).map((product, i) => {
+                    const tileTone = [
+                      'border-[var(--color-saffron)]/40 bg-[var(--color-saffron)]/10 hover:bg-[var(--color-saffron)]/20',
+                      'border-[var(--color-petrol)]/25 bg-[var(--color-petrol)]/8 hover:bg-[var(--color-petrol)]/15',
+                      'border-[var(--color-olive)]/25 bg-[var(--color-olive)]/8 hover:bg-[var(--color-olive)]/15',
+                      'border-[var(--color-copper)]/25 bg-[var(--color-copper)]/8 hover:bg-[var(--color-copper)]/15',
+                    ][i % 4]
+                    return (
                       <button
-                        key={group.id}
+                        key={product.id}
                         type="button"
-                        onClick={() => setSelectedGroupId(group.id)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                          selectedGroupId === group.id
-                            ? 'border-[var(--color-petrol)] bg-[var(--color-petrol)] text-white'
-                            : 'border-[var(--color-paper-line)] bg-white text-[var(--color-ink-soft)] hover:border-[var(--color-petrol)]'
-                        }`}
+                        onClick={() => handleSelectSearchResult(product)}
+                        className={`rounded-xl border p-3 text-left text-sm transition ${tileTone}`}
                       >
-                        {group.name}
+                        <div className="line-clamp-2 font-medium text-[var(--color-ink)]">{product.name}</div>
+                        <div className="tabular-money mt-1 text-xs text-[var(--color-ink-soft)]">{money(product.price)}</div>
                       </button>
-                    ))}
-                  </div>
-                )}
-
-                {quickAddProducts.length === 0 ? (
-                  <p className="text-xs text-[var(--color-ink-soft)]">Bu grupta ürün yok.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {quickAddProducts.map((product, i) => {
-                      const tileTone = [
-                        'border-[var(--color-saffron)]/40 bg-[var(--color-saffron)]/10 hover:bg-[var(--color-saffron)]/20',
-                        'border-[var(--color-petrol)]/25 bg-[var(--color-petrol)]/8 hover:bg-[var(--color-petrol)]/15',
-                        'border-[var(--color-olive)]/25 bg-[var(--color-olive)]/8 hover:bg-[var(--color-olive)]/15',
-                        'border-[var(--color-copper)]/25 bg-[var(--color-copper)]/8 hover:bg-[var(--color-copper)]/15',
-                      ][i % 4]
-                      return (
-                        <button
-                          key={product.id}
-                          type="button"
-                          onClick={() => handleSelectSearchResult(product)}
-                          className={`rounded-xl border p-3 text-left text-sm transition ${tileTone}`}
-                        >
-                          <div className="line-clamp-2 font-medium text-[var(--color-ink)]">{product.name}</div>
-                          <div className="tabular-money mt-1 text-xs text-[var(--color-ink-soft)]">{money(product.price)}</div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
+                    )
+                  })}
+                </div>
               </section>
             )}
 

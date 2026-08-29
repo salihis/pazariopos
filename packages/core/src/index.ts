@@ -35,11 +35,11 @@ export { inventoryService } from './services/InventoryService'
 
 // API client (used directly by the store; exposed for advanced use / testing)
 export {
-  salesApi, purchasesApi, accountsApi, productsApi, categoriesApi, cashRegistersApi, bankAccountsApi, chequesApi, reportsApi,
+  salesApi, purchasesApi, accountsApi, productsApi, categoriesApi, quickSaleGroupsApi, cashRegistersApi, bankAccountsApi, chequesApi, reportsApi,
   authApi, usersApi, stockCountsApi,
   ApiError, setApiBaseUrl, setAuthToken,
 } from './api/salesApi'
-export type { CreateAccountInput, CreateCategoryInput, CreateChequeInput, CreateUserInput, UpdateUserInput, CreateProductInput, UpdateProductInput, CreatePurchaseInput } from './api/salesApi'
+export type { CreateAccountInput, CreateCategoryInput, CreateQuickSaleGroupInput, CreateChequeInput, CreateUserInput, UpdateUserInput, CreateProductInput, UpdateProductInput, CreatePurchaseInput } from './api/salesApi'
 
 // Stores
 export { useSaleStore } from './store/useSaleStore'

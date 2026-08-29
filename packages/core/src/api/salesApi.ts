@@ -9,7 +9,7 @@ import type {
   Sale, Product, Account, AccountTransaction, AgingReport,
   Category, CashRegister, CashMovement, CashCount, BankAccount, BankTransaction, Cheque,
   CashFlowReport, IncomeExpenseReport, ProfitLossReport, User, Purchase, PaymentLine,
-  StockCount,
+  StockCount, QuickSaleGroup,
 } from '../types/domain'
 
 // packages/core must stay platform-agnostic (see CODING_GUIDELINES.md §2) —
@@ -175,6 +175,7 @@ export type CreateProductInput = {
   lowStockThreshold?: number
   unit?: Product['unit']
   categoryId?: string | null
+  quickSaleGroupId?: string | null
   warehouseId?: string
 }
 
@@ -187,6 +188,7 @@ export type UpdateProductInput = {
   lowStockThreshold: number
   unit: Product['unit']
   categoryId?: string | null
+  quickSaleGroupId?: string | null
   warehouseId: string
 }
 
@@ -267,6 +269,20 @@ export const categoriesApi = {
   },
   createCategory(input: CreateCategoryInput): Promise<Category> {
     return request<Category>('/api/categories', { method: 'POST', body: JSON.stringify(input) })
+  },
+}
+
+export type CreateQuickSaleGroupInput = { name: string }
+
+// Independent from categoriesApi — see Product.quickSaleGroupId /
+// QuickSaleGroup in types/domain.ts for why this is a separate, flat
+// grouping used only to curate the POS "Hızlı Ürünler" quick-add grid.
+export const quickSaleGroupsApi = {
+  listQuickSaleGroups(): Promise<QuickSaleGroup[]> {
+    return request<QuickSaleGroup[]>('/api/quick-sale-groups')
+  },
+  createQuickSaleGroup(input: CreateQuickSaleGroupInput): Promise<QuickSaleGroup> {
+    return request<QuickSaleGroup>('/api/quick-sale-groups', { method: 'POST', body: JSON.stringify(input) })
   },
 }
 

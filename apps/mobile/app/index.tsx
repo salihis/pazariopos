@@ -491,7 +491,7 @@ export default function Index() {
           style={[styles.tabButton, currentTab === 'count' && styles.activeTabButton]} 
           onPress={() => setCurrentTab('count')}
         >
-          <Iconicons name="clipboard" size={20} color={currentTab === 'count' ? '#d99a2b' : '#666'} />
+          <Ionicons name="clipboard" size={20} color={currentTab === 'count' ? '#d99a2b' : '#666'} />
           <Text style={[styles.tabButtonText, currentTab === 'count' && styles.activeTabButtonText]}>Sayım</Text>
         </TouchableOpacity>
 

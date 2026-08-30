@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, TextInput, ActivityIndicator, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useRouter } from 'expo-router';
 import { useStore, Account, Product } from './store/useStore';
 
 export default function Index() {
+  const router = useRouter();
   const {
     token,
     username,
@@ -314,6 +316,14 @@ export default function Index() {
             <View style={[styles.statusDot, { backgroundColor: isOnline ? '#4CAF50' : '#F44336' }]} />
             <Text style={styles.statusText}>{isOnline ? 'Sunucu Bağlantısı Aktif' : 'Çevrimdışı Çalışıyor'}</Text>
           </View>
+
+          <TouchableOpacity 
+            style={styles.settingsLoginButton}
+            onPress={() => router.push('/settings')}
+          >
+            <Ionicons name="settings" size={18} color="#d99a2b" />
+            <Text style={styles.settingsLoginButtonText}>Ayarlar</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -371,6 +381,13 @@ export default function Index() {
               <Ionicons name="barcode-outline" size={24} color="#fff" />
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity 
+            onPress={() => router.push('/settings')} 
+            style={styles.iconButton}
+          >
+            <Ionicons name="settings-outline" size={24} color="#fff" />
+          </TouchableOpacity>
 
           <TouchableOpacity onPress={logout} style={styles.iconButton}>
             <Ionicons name="log-out-outline" size={24} color="#fff" />
@@ -832,6 +849,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 15, fontSize: 16 },
   loginButton: { backgroundColor: '#d99a2b', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
   loginButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  settingsLoginButton: { flexDirection: 'row', backgroundColor: '#f0f0f0', padding: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 15, borderWidth: 1, borderColor: '#d99a2b' },
+  settingsLoginButtonText: { color: '#d99a2b', fontSize: 16, fontWeight: '600', marginLeft: 8 },
   errorText: { color: 'red', marginBottom: 10, textAlign: 'center' },
   connectionBadgeContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
@@ -865,7 +884,7 @@ const styles = StyleSheet.create({
   draftInfoSubtitle: { fontSize: 12, color: '#b5551f', marginTop: 4 },
 
   // Product Card styles
-  productCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#fff', marginHorizontal: 10, marginVertical: 5, borderRadius: 10, elevation: 1, borderWidth: 1, borderColor: '#e6dfd0' },
+  productCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: '#fff', marginHorizontal: 10, marginVertical: 5, borderRadius: 10, elevation: 2 },
   productName: { fontSize: 16, fontWeight: '600', color: '#123738' },
   productPrice: { fontSize: 14, color: '#b5551f', marginTop: 4, fontWeight: 'bold' },
   lowStockText: { fontSize: 12, color: '#b5551f', marginTop: 4, fontWeight: 'bold' },

@@ -4,9 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { useStore, Account, Product } from './store/useStore';
+import SettingsScreen from './settings';
 
 export default function Index() {
   const router = useRouter();
+  const [showSettings, setShowSettings] = useState(false);
+  
   const {
     token,
     username,
@@ -43,7 +46,7 @@ export default function Index() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const [showScanner, setShowScanner] = useState(false);
-  const [currentTab, setCurrentTab] = useState<'sales' | 'cari' | 'count' | 'finance'>('sales');
+  const [currentTab, setCurrentTab] = useState<'sales' | 'cari' | 'count' | 'finance' | 'settings'>('sales');
 
   // Login form state
   const [inputUsername, setInputUsername] = useState('');
@@ -319,12 +322,27 @@ export default function Index() {
 
           <TouchableOpacity 
             style={styles.settingsLoginButton}
-            onPress={() => router.push('/settings')}
+            onPress={() => setShowSettings(true)}
           >
             <Ionicons name="settings" size={18} color="#d99a2b" />
             <Text style={styles.settingsLoginButtonText}>Ayarlar</Text>
           </TouchableOpacity>
         </View>
+
+        {showSettings && (
+          <Modal visible={showSettings} animationType="slide" transparent={false}>
+            <View style={{ flex: 1 }}>
+              <TouchableOpacity 
+                style={styles.settingsCloseBtn}
+                onPress={() => setShowSettings(false)}
+              >
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+                <Text style={styles.settingsCloseBtnText}>Geri Dön</Text>
+              </TouchableOpacity>
+              <SettingsScreen />
+            </View>
+          </Modal>
+        )}
       </View>
     );
   }
@@ -349,6 +367,69 @@ export default function Index() {
   }
 
   const selectedCariObj = accounts.find(a => a.id === selectedCustomerId);
+
+  // Settings Tab View
+  if (currentTab === 'settings') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>PazarioPOS</Text>
+            <Text style={styles.cashierText}>{username} ({role})</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={logout} style={styles.iconButton}>
+              <Ionicons name="log-out-outline" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.tabContainer}>
+          <TouchableOpacity 
+            style={[styles.tabButton, currentTab === 'sales' && styles.activeTabButton]} 
+            onPress={() => setCurrentTab('sales')}
+          >
+            <Ionicons name="cart" size={20} color={currentTab === 'sales' ? '#d99a2b' : '#666'} />
+            <Text style={[styles.tabButtonText, currentTab === 'sales' && styles.activeTabButtonText]}>Satış</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, currentTab === 'cari' && styles.activeTabButton]} 
+            onPress={() => setCurrentTab('cari')}
+          >
+            <Ionicons name="people" size={20} color={currentTab === 'cari' ? '#d99a2b' : '#666'} />
+            <Text style={[styles.tabButtonText, currentTab === 'cari' && styles.activeTabButtonText]}>Cari</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, currentTab === 'count' && styles.activeTabButton]} 
+            onPress={() => setCurrentTab('count')}
+          >
+            <Ionicons name="clipboard" size={20} color={currentTab === 'count' ? '#d99a2b' : '#666'} />
+            <Text style={[styles.tabButtonText, currentTab === 'count' && styles.activeTabButtonText]}>Sayım</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, currentTab === 'finance' && styles.activeTabButton]} 
+            onPress={() => setCurrentTab('finance')}
+          >
+            <Ionicons name="stats-chart" size={20} color={currentTab === 'finance' ? '#d99a2b' : '#666'} />
+            <Text style={[styles.tabButtonText, currentTab === 'finance' && styles.activeTabButtonText]}>Finans</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabButton, currentTab === 'settings' && styles.activeTabButton]} 
+            onPress={() => setCurrentTab('settings')}
+          >
+            <Ionicons name="settings" size={20} color={currentTab === 'settings' ? '#d99a2b' : '#666'} />
+            <Text style={[styles.tabButtonText, currentTab === 'settings' && styles.activeTabButtonText]}>Ayarlar</Text>
+          </TouchableOpacity>
+        </View>
+
+        <SettingsScreen />
+      </View>
+    );
+  }
 
   // 3. MAIN APP VIEW WITH TABS
   return (
@@ -382,13 +463,6 @@ export default function Index() {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity 
-            onPress={() => router.push('/settings')} 
-            style={styles.iconButton}
-          >
-            <Ionicons name="settings-outline" size={24} color="#fff" />
-          </TouchableOpacity>
-
           <TouchableOpacity onPress={logout} style={styles.iconButton}>
             <Ionicons name="log-out-outline" size={24} color="#fff" />
           </TouchableOpacity>
@@ -417,7 +491,7 @@ export default function Index() {
           style={[styles.tabButton, currentTab === 'count' && styles.activeTabButton]} 
           onPress={() => setCurrentTab('count')}
         >
-          <Ionicons name="clipboard" size={20} color={currentTab === 'count' ? '#d99a2b' : '#666'} />
+          <Iconicons name="clipboard" size={20} color={currentTab === 'count' ? '#d99a2b' : '#666'} />
           <Text style={[styles.tabButtonText, currentTab === 'count' && styles.activeTabButtonText]}>Sayım</Text>
         </TouchableOpacity>
 
@@ -427,6 +501,14 @@ export default function Index() {
         >
           <Ionicons name="stats-chart" size={20} color={currentTab === 'finance' ? '#d99a2b' : '#666'} />
           <Text style={[styles.tabButtonText, currentTab === 'finance' && styles.activeTabButtonText]}>Finans</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.tabButton, currentTab === 'settings' && styles.activeTabButton]} 
+          onPress={() => setCurrentTab('settings')}
+        >
+          <Ionicons name="settings" size={20} color={currentTab === 'settings' ? '#d99a2b' : '#666'} />
+          <Text style={[styles.tabButtonText, currentTab === 'settings' && styles.activeTabButtonText]}>Ayarlar</Text>
         </TouchableOpacity>
       </View>
 
@@ -851,6 +933,8 @@ const styles = StyleSheet.create({
   loginButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   settingsLoginButton: { flexDirection: 'row', backgroundColor: '#f0f0f0', padding: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 15, borderWidth: 1, borderColor: '#d99a2b' },
   settingsLoginButtonText: { color: '#d99a2b', fontSize: 16, fontWeight: '600', marginLeft: 8 },
+  settingsCloseBtn: { flexDirection: 'row', backgroundColor: '#123738', padding: 12, alignItems: 'center', paddingTop: 40 },
+  settingsCloseBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', marginLeft: 12 },
   errorText: { color: 'red', marginBottom: 10, textAlign: 'center' },
   connectionBadgeContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
@@ -866,10 +950,10 @@ const styles = StyleSheet.create({
   syncBadge: { color: '#fff', fontWeight: 'bold', marginLeft: 4, fontSize: 14 },
 
   // TABS styling
-  tabContainer: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#e6dfd0', paddingVertical: 8 },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#e6dfd0', paddingVertical: 8, overflow: 'hidden' },
   tabButton: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8 },
   activeTabButton: { borderBottomWidth: 2, borderBottomColor: '#d99a2b' },
-  tabButtonText: { fontSize: 13, fontWeight: '600', color: '#666', marginLeft: 4 },
+  tabButtonText: { fontSize: 11, fontWeight: '600', color: '#666', marginLeft: 4 },
   activeTabButtonText: { color: '#d99a2b' },
 
   // Cari Selector Row (Satış sekmesinde)

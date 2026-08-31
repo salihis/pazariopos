@@ -23,7 +23,18 @@ import { StockCountScreen } from './StockCountScreen'
 
 type Tab = 'cash' | 'accounts' | 'finance' | 'products' | 'stockCount' | 'purchases' | 'sales' | 'users'
 
-export function BackOfficeScreen() {
+export interface BackOfficeScreenProps {
+  /** Jump straight to a tab on mount — used by PosScreen's "Ürün Ekle"
+   * shortcut (a scanned barcode with no matching product) so the
+   * cashier lands directly on the add-product form instead of the
+   * default Kasa tab. */
+  initialTab?: Tab
+  /** Passed straight through to ProductsPanel — see its own prop for
+   * details. Only meaningful when initialTab is 'products'. */
+  productInitialCreateValues?: { barcode?: string; name?: string }
+}
+
+export function BackOfficeScreen({ initialTab, productInitialCreateValues }: BackOfficeScreenProps = {}) {
   const currentUser = useAuthStore(s => s.currentUser)
   const isAdmin = currentUser?.role === 'admin'
   // 'warehouse' (Depo) only has server-side RBAC for products/stock
@@ -34,7 +45,7 @@ export function BackOfficeScreen() {
   const isWarehouseOnly = currentUser?.role === 'warehouse'
   const canSeeFinanceTabs = !isWarehouseOnly
 
-  const [tab, setTab] = useState<Tab>(isWarehouseOnly ? 'stockCount' : 'cash')
+  const [tab, setTab] = useState<Tab>(initialTab ?? (isWarehouseOnly ? 'stockCount' : 'cash'))
 
   // Both panels' data lives in stores that don't auto-load on mount
   // (unlike useInventoryStore, which PosScreen already drives) — kick
@@ -67,7 +78,7 @@ export function BackOfficeScreen() {
       {tab === 'cash' && canSeeFinanceTabs && <CashRegisterPanel />}
       {tab === 'accounts' && canSeeFinanceTabs && <AccountsPanel />}
       {tab === 'finance' && canSeeFinanceTabs && <FinancePanel />}
-      {tab === 'products' && <ProductsPanel />}
+      {tab === 'products' && <ProductsPanel initialCreateValues={productInitialCreateValues} />}
       {tab === 'stockCount' && <StockCountScreen />}
       {tab === 'purchases' && canSeeFinanceTabs && <PurchaseInvoicePanel />}
       {tab === 'sales' && canSeeFinanceTabs && <SalesInvoicesPanel />}

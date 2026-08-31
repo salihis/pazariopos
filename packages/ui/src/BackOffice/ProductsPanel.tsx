@@ -382,12 +382,18 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
     setForm(f => ({ ...f, subCategoryId: cat.id }))
   }, [newSubCategoryName, form.mainCategoryId, load])
 
+  const [quickSaleGroupError, setQuickSaleGroupError] = useState<string | null>(null)
   const handleCreateQuickSaleGroup = useCallback(async () => {
     if (!newQuickSaleGroupName.trim()) return
-    const group = await quickSaleGroupsApi.createQuickSaleGroup({ name: newQuickSaleGroupName.trim() })
-    setNewQuickSaleGroupName('')
-    await load()
-    setForm(f => ({ ...f, quickSaleGroupId: group.id }))
+    setQuickSaleGroupError(null)
+    try {
+      const group = await quickSaleGroupsApi.createQuickSaleGroup({ name: newQuickSaleGroupName.trim() })
+      setNewQuickSaleGroupName('')
+      await load()
+      setForm(f => ({ ...f, quickSaleGroupId: group.id }))
+    } catch (err) {
+      setQuickSaleGroupError(err instanceof Error ? err.message : 'Grup eklenemedi.')
+    }
   }, [newQuickSaleGroupName, load])
 
   const handleSave = useCallback(async () => {
@@ -704,7 +710,16 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
                 onChange={e => setNewQuickSaleGroupName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') void handleCreateQuickSaleGroup() }}
                 className="flex-1 rounded-lg border border-[var(--color-paper-line)] bg-white px-2.5 py-1 text-xs outline-none focus:border-[var(--color-saffron)]" />
+              <button type="button" onClick={() => void handleCreateQuickSaleGroup()}
+                className="rounded-lg border border-[var(--color-saffron)] bg-[var(--color-saffron)]/10 px-3 py-1 text-xs font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-saffron)]/20">
+                Ekle
+              </button>
             </div>
+            {quickSaleGroupError && (
+              <div className="mt-1.5 rounded-lg border border-[var(--color-copper)]/30 bg-[var(--color-copper-light)]/15 px-2.5 py-1.5 text-xs text-[var(--color-copper)]">
+                {quickSaleGroupError}
+              </div>
+            )}
           </div>
 
           {/* Mevcut Stok | Eklenen Stok */}

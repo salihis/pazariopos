@@ -31,6 +31,7 @@ import {
   getPrinterService,
   OfflineBalanceError,
   quickSaleGroupsApi,
+  MISC_SALE_PRODUCT_ID,
   type Product,
   type CartLine,
   type QuickSaleGroup,
@@ -110,6 +111,10 @@ export function PosScreen() {
   // admin/accountant in the header button below, mirroring the
   // server's RBAC on the routes those screens call.
   const [view, setView] = useState<'pos' | 'backoffice'>('pos')
+  // "Ürün bulunamadı" — what PosScreen hands off to BackOfficeScreen's
+  // Ürünler tab when the cashier picks "Ürün Ekle" for a scanned/typed
+  // value that matched no product (see resolveScannedValue below).
+  const [productCreateHandoff, setProductCreateHandoff] = useState<{ barcode?: string; name?: string } | null>(null)
 
   // ── Restore a previously-saved session, if any (Auth Phase 1) ──
   useEffect(() => {
@@ -135,27 +140,6 @@ export function PosScreen() {
     if (!currentUser) return
     void loadAccounts('customer')
   }, [loadAccounts, currentUser])
-
-  // ── Barcode scanning ─────────────────────────────────────
-  useEffect(() => {
-    const barcodeService = getBarcodeService()
-
-    const unsubscribe = barcodeService.onScan(event => {
-      const product = findByBarcode(event.value)
-
-      if (!product) {
-        setScanFeedback(`Bilinmeyen barkod: ${event.value}`)
-        return
-      }
-
-      addLine(productToCartLine(product))
-      setScanFeedback(`Eklendi: ${product.name}`)
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [addLine, findByBarcode])
 
   // ── Totals ───────────────────────────────────────────────
   const grandTotal = cart.reduce((sum, l) => sum + l.total, 0)
@@ -185,11 +169,13 @@ export function PosScreen() {
   //    listener above, AND the camera scanner below — all three paths
   //    funnel through the same exact-barcode-then-name-fallback logic
   //    so behaviour never diverges between input methods. ──
+  const [notFoundQuery, setNotFoundQuery] = useState<string | null>(null)
   const resolveScannedValue = useCallback((query: string, suggestions: Product[]) => {
     const product = findByBarcode(query)
     if (product) {
       addLine(productToCartLine(product))
       setScanFeedback(`Eklendi: ${product.name}`)
+      setNotFoundQuery(null)
       setSearchQuery('')
       setShowSuggestions(false)
       searchInputRef.current?.focus()
@@ -200,12 +186,30 @@ export function PosScreen() {
       const [onlyMatch] = suggestions
       if (onlyMatch) {
         handleSelectSearchResult(onlyMatch)
+        setNotFoundQuery(null)
       }
       return
     }
 
-    setScanFeedback(`Bulunamadı: ${query}`)
+    setScanFeedback(null)
+    setNotFoundQuery(query)
   }, [findByBarcode, addLine, handleSelectSearchResult])
+
+  // ── Barcode scanning (physical HID scanner / Tauri hardware event).
+  //    Placed after resolveScannedValue's definition — it's a plain
+  //    `const` (not hoisted), so referencing it any earlier would be a
+  //    temporal-dead-zone error. ──
+  useEffect(() => {
+    const barcodeService = getBarcodeService()
+
+    const unsubscribe = barcodeService.onScan(event => {
+      resolveScannedValue(event.value, [])
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [resolveScannedValue])
 
   // ── Manual barcode entry / Enter-to-add from the search box.
   //    Tries an exact barcode match first (so a barcode scanner
@@ -226,6 +230,58 @@ export function PosScreen() {
     setCameraOpen(false)
     resolveScannedValue(value, [])
   }, [resolveScannedValue])
+
+  // ── "Ürün bulunamadı" → two ways forward (bp/Yayla Soft-style):
+  //    catalog it properly, or sell it as a one-off "Muhtelif Satış"
+  //    line that never touches inventory. ──
+  const looksLikeBarcode = notFoundQuery !== null && /^\d{6,}$/.test(notFoundQuery)
+  const handleGoToAddProduct = useCallback(() => {
+    if (notFoundQuery === null) return
+    setProductCreateHandoff(looksLikeBarcode ? { barcode: notFoundQuery } : { name: notFoundQuery })
+    setNotFoundQuery(null)
+    setSearchQuery('')
+    setView('backoffice')
+  }, [notFoundQuery, looksLikeBarcode])
+
+  const [miscSaleForm, setMiscSaleForm] = useState<{ name: string; priceInput: string } | null>(null)
+  const handleOpenMiscSale = useCallback(() => {
+    if (notFoundQuery === null) return
+    setMiscSaleForm({ name: looksLikeBarcode ? '' : notFoundQuery, priceInput: '' })
+  }, [notFoundQuery, looksLikeBarcode])
+
+  const handleConfirmMiscSale = useCallback(() => {
+    if (!miscSaleForm) return
+    const name = miscSaleForm.name.trim()
+    const price = parseMoneyInput(miscSaleForm.priceInput)
+    if (!name || price === null || price <= 0) return
+
+    // Sold as its own catalog-free line — see MISC_SALE_PRODUCT_ID's
+    // comment (packages/core/src/constants.ts) for why this is safe to
+    // check out: the server special-cases this id to skip the
+    // stock-decrement it otherwise performs for every sale line.
+    const miscProduct: Product = {
+      id: MISC_SALE_PRODUCT_ID,
+      sku: 'MUHTELIF',
+      name,
+      barcode: [],
+      price,
+      costPrice: null,
+      taxRate: 0.18,
+      stock: 0,
+      lowStockThreshold: 0,
+      unit: 'piece',
+      categoryId: null,
+      quickSaleGroupId: null,
+      warehouseId: 'default',
+      isActive: true,
+    }
+    addLine(productToCartLine(miscProduct))
+    setScanFeedback(`Eklendi: ${name}`)
+    setMiscSaleForm(null)
+    setNotFoundQuery(null)
+    setSearchQuery('')
+    searchInputRef.current?.focus()
+  }, [miscSaleForm, addLine])
 
   // ── "Hızlı Ürünler" group tabs — with ~1000 SKUs in the catalog, only
   //    products explicitly tagged with a Hızlı Ürün Grubu (an admin
@@ -395,7 +451,10 @@ export function PosScreen() {
                   ? 'border-[var(--color-saffron)] bg-[var(--color-saffron)] text-[var(--color-ink)]'
                   : 'border-[var(--color-paper)]/30 text-[var(--color-paper)] hover:bg-white/10'
               }`}
-              onClick={() => setView(v => (v === 'pos' ? 'backoffice' : 'pos'))}
+              onClick={() => setView(v => {
+                if (v === 'backoffice') setProductCreateHandoff(null)
+                return v === 'pos' ? 'backoffice' : 'pos'
+              })}
             >
               {view === 'backoffice' ? '← Kasaya Dön' : 'Yönetim Paneli'}
             </button>
@@ -412,7 +471,10 @@ export function PosScreen() {
 
       <div className="mx-auto max-w-6xl p-3 sm:p-6">
         {view === 'backoffice' ? (
-          <BackOfficeScreen />
+          <BackOfficeScreen
+            initialTab={productCreateHandoff ? 'products' : undefined}
+            productInitialCreateValues={productCreateHandoff ?? undefined}
+          />
         ) : (
           <>
         {lastSyncError && (
@@ -524,6 +586,86 @@ export function PosScreen() {
               )}
               {scanFeedback && (
                 <div className="mt-2 text-sm font-medium text-[var(--color-olive)]">{scanFeedback}</div>
+              )}
+
+              {/* ── "Ürün bulunamadı" — offer both ways forward instead
+                   of just a dead-end message (bp/Yayla Soft-style: a
+                   real product goes through Ürün Ekle, a one-off item
+                   goes through Muhtelif Satış without ever touching
+                   the catalog). ── */}
+              {notFoundQuery !== null && !miscSaleForm && (
+                <div className="mt-2 rounded-lg border border-[var(--color-copper)]/30 bg-[var(--color-copper-light)]/15 p-3">
+                  <div className="mb-2 text-sm font-medium text-[var(--color-copper)]">
+                    Bulunamadı: {notFoundQuery}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleGoToAddProduct}
+                      className="rounded-lg border border-[var(--color-petrol)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-petrol)]/10"
+                    >
+                      + Ürün Ekle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenMiscSale}
+                      className="rounded-lg border border-[var(--color-saffron)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-saffron)]/10"
+                    >
+                      Muhtelif Satış
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotFoundQuery(null)}
+                      className="rounded-lg px-3 py-1.5 text-xs text-[var(--color-ink-soft)] transition hover:bg-black/5"
+                    >
+                      Vazgeç
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Muhtelif Satış mini-form — sells the scanned/typed
+                   value as a one-off line (name + manual price), never
+                   creating a catalog row. See MISC_SALE_PRODUCT_ID. ── */}
+              {miscSaleForm && (
+                <div className="mt-2 rounded-lg border border-[var(--color-saffron)]/40 bg-[var(--color-saffron)]/10 p-3">
+                  <div className="mb-2 text-xs font-medium text-[var(--color-ink-soft)]">
+                    Muhtelif Satış — kataloğa eklenmez, sadece bu satışa özel
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      placeholder="Ürün adı"
+                      value={miscSaleForm.name}
+                      onChange={e => setMiscSaleForm(f => f && { ...f, name: e.target.value })}
+                      className="min-w-[10rem] flex-1 rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-1.5 text-sm outline-none focus:border-[var(--color-saffron)]"
+                    />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Fiyat (ör. 25.00)"
+                      value={miscSaleForm.priceInput}
+                      onChange={e => setMiscSaleForm(f => f && { ...f, priceInput: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') handleConfirmMiscSale() }}
+                      className="w-32 rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-1.5 text-sm outline-none focus:border-[var(--color-saffron)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleConfirmMiscSale}
+                      disabled={!miscSaleForm.name.trim() || parseMoneyInput(miscSaleForm.priceInput) === null}
+                      className="rounded-lg bg-[var(--color-olive)] px-4 py-1.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Sepete Ekle
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMiscSaleForm(null)}
+                      className="rounded-lg px-3 py-1.5 text-xs text-[var(--color-ink-soft)] transition hover:bg-black/5"
+                    >
+                      Vazgeç
+                    </button>
+                  </div>
+                </div>
               )}
             </section>
 

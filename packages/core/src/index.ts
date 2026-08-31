@@ -8,6 +8,7 @@
 
 // Types
 export * from './types/domain'
+export * from './constants'
 
 // Platform detection
 export { platform } from './platform/PlatformDetectionService'

@@ -32,8 +32,32 @@ export type SaleSubmitOutcome =
   | { mode: 'online'; sale: Sale }
   | { mode: 'queued'; sale: Sale }
 
+// One customer's draft — see SaleStoreState.slots for why there are
+// several of these at once.
+export interface SaleSlot {
+  cart: CartLine[]
+  customerId: string | null
+}
+
+export const SALE_SLOT_COUNT = 4
+
+function emptySlots(): SaleSlot[] {
+  return Array.from({ length: SALE_SLOT_COUNT }, () => ({ cart: [], customerId: null }))
+}
+
 export interface SaleStoreState {
-  // Current draft cart
+  // ── Multi-customer "tabs" — a cashier can hold up to SALE_SLOT_COUNT
+  //    concurrent draft sales (e.g. customer 2 is mid-order while
+  //    customer 1 is still deciding), and switch between them without
+  //    losing either cart. `cart` / `customerId` below always mirror
+  //    `slots[activeSlotIndex]` — every other store consumer keeps
+  //    reading those two fields exactly as before; only PosScreen's new
+  //    tab bar needs to know about `slots` / `activeSlotIndex` at all. ──
+  slots: SaleSlot[]
+  activeSlotIndex: number
+
+  // Current draft cart — mirrors slots[activeSlotIndex]; write through
+  // the actions below, never assign this directly.
   cart: CartLine[]
   customerId: string | null
 
@@ -44,11 +68,14 @@ export interface SaleStoreState {
   lastSyncError: string | null
   lastSubmittedSale: Sale | null
 
-  // ── Cart actions ──
+  // ── Cart actions (act on the ACTIVE slot) ──
   addLine(line: CartLine): void
   removeLine(productId: string): void
   clearCart(): void
   setCustomer(customerId: string | null): void
+
+  // ── Slot (multi-customer tab) switching ──
+  setActiveSlot(index: number): void
 
   // ── Sale submission (the core offline/online branch) ──
   submitSale(payments: PaymentLine[]): Promise<SaleSubmitOutcome>
@@ -118,17 +145,19 @@ function buildDraftSale(
 // Kept outside the `create()` callback so they have clean, fully
 // inferred types instead of relying on `this` inside a store method.
 
-async function enqueueOffline(set: SetFn, draft: Sale): Promise<SaleSubmitOutcome> {
+async function enqueueOffline(set: SetFn, get: GetFn, draft: Sale): Promise<SaleSubmitOutcome> {
   const queue = getLocalSaleQueue()
   await queue.enqueue(draft)
 
   const pending = await queue.listPending()
-  set({
+  const { activeSlotIndex } = get()
+  set(state => ({
     pendingCount: pending.length,
     lastSubmittedSale: draft,
+    slots: state.slots.map((slot, i) => (i === activeSlotIndex ? { cart: [], customerId: null } : slot)),
     cart: [],
     customerId: null,
-  })
+  }))
 
   return { mode: 'queued', sale: draft }
 }
@@ -138,7 +167,7 @@ async function submitSaleAction(
   get: GetFn,
   payments: PaymentLine[],
 ): Promise<SaleSubmitOutcome> {
-  const { cart, customerId, networkStatus } = get()
+  const { cart, customerId, networkStatus, activeSlotIndex } = get()
   if (cart.length === 0) {
     throw new Error('Cannot submit an empty sale.')
   }
@@ -149,18 +178,23 @@ async function submitSaleAction(
   if (networkStatus === 'online') {
     try {
       const persisted = await salesApi.createSale({ ...draft, syncStatus: 'synced' })
-      set({ lastSubmittedSale: persisted, cart: [], customerId: null })
+      set(state => ({
+        lastSubmittedSale: persisted,
+        slots: state.slots.map((slot, i) => (i === activeSlotIndex ? { cart: [], customerId: null } : slot)),
+        cart: [],
+        customerId: null,
+      }))
       return { mode: 'online', sale: persisted }
     } catch (err) {
       // Connection dropped mid-request (race between check and send) —
       // fall back to the offline queue instead of losing the sale.
       console.warn('[useSaleStore] Online submit failed, falling back to queue:', err)
-      return enqueueOffline(set, draft)
+      return enqueueOffline(set, get, draft)
     }
   }
 
   // ── OFFLINE branch ──
-  return enqueueOffline(set, draft)
+  return enqueueOffline(set, get, draft)
 }
 
 async function syncPendingSalesAction(set: SetFn, get: GetFn): Promise<void> {
@@ -197,6 +231,8 @@ async function syncPendingSalesAction(set: SetFn, get: GetFn): Promise<void> {
 
 export const useSaleStore = create<SaleStoreState>()(
   subscribeWithSelector((set, get) => ({
+    slots: emptySlots(),
+    activeSlotIndex: 0,
     cart: [],
     customerId: null,
 
@@ -206,34 +242,63 @@ export const useSaleStore = create<SaleStoreState>()(
     lastSyncError: null,
     lastSubmittedSale: null,
 
-    // ── Cart actions ──────────────────────────────────────────
+    // ── Cart actions — always act on the ACTIVE slot, and keep the
+    //    top-level cart/customerId mirror in sync with it. ──────────
 
     addLine(line) {
       set(state => {
-        const existing = state.cart.find(l => l.product.id === line.product.id)
-        if (existing) {
-          return {
-            cart: state.cart.map(l =>
+        const activeCart = state.slots[state.activeSlotIndex]?.cart ?? []
+        const existing = activeCart.find(l => l.product.id === line.product.id)
+        const nextCart = existing
+          ? activeCart.map(l =>
               l.product.id === line.product.id
                 ? { ...l, quantity: l.quantity + line.quantity, total: l.total + line.total }
                 : l,
-            ),
-          }
+            )
+          : [...activeCart, line]
+
+        return {
+          slots: state.slots.map((slot, i) => (i === state.activeSlotIndex ? { ...slot, cart: nextCart } : slot)),
+          cart: nextCart,
         }
-        return { cart: [...state.cart, line] }
       })
     },
 
     removeLine(productId) {
-      set(state => ({ cart: state.cart.filter(l => l.product.id !== productId) }))
+      set(state => {
+        const nextCart = (state.slots[state.activeSlotIndex]?.cart ?? []).filter(l => l.product.id !== productId)
+        return {
+          slots: state.slots.map((slot, i) => (i === state.activeSlotIndex ? { ...slot, cart: nextCart } : slot)),
+          cart: nextCart,
+        }
+      })
     },
 
     clearCart() {
-      set({ cart: [], customerId: null })
+      set(state => ({
+        slots: state.slots.map((slot, i) => (i === state.activeSlotIndex ? { cart: [], customerId: null } : slot)),
+        cart: [],
+        customerId: null,
+      }))
     },
 
     setCustomer(customerId) {
-      set({ customerId })
+      set(state => ({
+        slots: state.slots.map((slot, i) => (i === state.activeSlotIndex ? { ...slot, customerId } : slot)),
+        customerId,
+      }))
+    },
+
+    // ── Slot switching — e.g. cashier taps "Müşteri 2" while Müşteri
+    //    1's order is still open. No data is lost; each slot keeps its
+    //    own cart/customer until its sale is submitted. ──────────────
+
+    setActiveSlot(index) {
+      set(state => {
+        const slot = state.slots[index]
+        if (!slot) return {}
+        return { activeSlotIndex: index, cart: slot.cart, customerId: slot.customerId }
+      })
     },
 
     // ── Sale submission ───────────────────────────────────────

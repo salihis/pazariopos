@@ -72,6 +72,9 @@ export function PosScreen() {
   const cart            = useSaleStore(s => s.cart)
   const customerId      = useSaleStore(s => s.customerId)
   const setCustomer     = useSaleStore(s => s.setCustomer)
+  const slots            = useSaleStore(s => s.slots)
+  const activeSlotIndex  = useSaleStore(s => s.activeSlotIndex)
+  const setActiveSlot    = useSaleStore(s => s.setActiveSlot)
   const networkStatus   = useSaleStore(s => s.networkStatus)
   const pendingCount     = useSaleStore(s => s.pendingCount)
   const isSyncing        = useSaleStore(s => s.isSyncing)
@@ -743,6 +746,36 @@ export function PosScreen() {
               <h2 className="mb-3 font-[var(--font-display)] text-lg font-semibold text-[var(--color-petrol)]">
                 Sepet
               </h2>
+
+              {/* ── Multi-customer tabs — up to SALE_SLOT_COUNT concurrent
+                   draft sales, so Müşteri 2 doesn't have to wait for
+                   Müşteri 1 to finish before the cashier can start
+                   ringing them up. Switching tabs swaps the whole cart
+                   +selected customer via useSaleStore's slots — nothing
+                   is lost, each tab keeps its own state until checked
+                   out. ── */}
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {slots.map((slot, i) => {
+                  const slotTotal = slot.cart.reduce((sum, l) => sum + l.total, 0)
+                  const isActive = i === activeSlotIndex
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setActiveSlot(i)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                        isActive
+                          ? 'border-[var(--color-petrol)] bg-[var(--color-petrol)] text-white'
+                          : slot.cart.length > 0
+                            ? 'border-[var(--color-saffron)] bg-[var(--color-saffron)]/10 text-[var(--color-petrol)]'
+                            : 'border-[var(--color-paper-line)] bg-white text-[var(--color-ink-soft)] hover:border-[var(--color-petrol)]'
+                      }`}
+                    >
+                      Müşteri {i + 1} ({money(slotTotal)})
+                    </button>
+                  )
+                })}
+              </div>
 
               {cart.length === 0 ? (
                 <p className="text-sm text-[var(--color-ink-soft)]">Sepet boş — başlamak için bir ürün tarayın.</p>

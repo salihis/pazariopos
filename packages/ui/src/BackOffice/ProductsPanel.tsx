@@ -54,12 +54,14 @@ function generateEan13(): string {
 type FormState = {
   barcode: string
   name: string
+  brand: string
   unit: Product['unit']
   sku: string
   costPriceInput: string
   costPriceTaxInclusive: boolean
   priceInput: string
   priceTaxInclusive: boolean
+  price2Input: string
   taxRate: number
   lowStockThreshold: number
   mainCategoryId: string | null
@@ -71,9 +73,9 @@ type FormState = {
 
 function emptyFormState(): FormState {
   return {
-    barcode: '', name: '', unit: 'piece', sku: '',
+    barcode: '', name: '', brand: '', unit: 'piece', sku: '',
     costPriceInput: '', costPriceTaxInclusive: true,
-    priceInput: '', priceTaxInclusive: true,
+    priceInput: '', priceTaxInclusive: true, price2Input: '',
     taxRate: 0.18, lowStockThreshold: 0,
     mainCategoryId: null, subCategoryId: null,
     quickSaleGroupId: null,
@@ -338,12 +340,14 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
     setForm({
       barcode: p.barcode[0] ?? '',
       name: p.name,
+      brand: p.brand ?? '',
       unit: p.unit,
       sku: p.sku,
       costPriceInput: p.costPrice != null ? money(p.costPrice) : '',
       costPriceTaxInclusive: true,
       priceInput: money(p.price),
       priceTaxInclusive: true,
+      price2Input: p.price2 != null ? money(p.price2) : '',
       taxRate: p.taxRate,
       lowStockThreshold: p.lowStockThreshold,
       mainCategoryId, subCategoryId,
@@ -403,19 +407,24 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
 
     const price = toGrossKurus(form.priceInput, form.priceTaxInclusive, form.taxRate)
     if (price === null) { setMessage('Geçerli bir satış fiyatı girin.'); return }
+    const price2 = form.price2Input.trim()
+      ? toGrossKurus(form.price2Input, form.priceTaxInclusive, form.taxRate)
+      : null
+    if (form.price2Input.trim() && price2 === null) { setMessage('Geçerli bir Fiyat 2 girin.'); return }
     const costPrice = form.costPriceInput.trim()
       ? toGrossKurus(form.costPriceInput, form.costPriceTaxInclusive, form.taxRate)
       : null
     if (form.costPriceInput.trim() && costPrice === null) { setMessage('Geçerli bir alış fiyatı girin.'); return }
 
     const categoryId = form.subCategoryId ?? form.mainCategoryId
+    const brand = form.brand.trim() || null
 
     try {
       if (editingProduct) {
         const input: UpdateProductInput = {
           name: form.name,
           barcode: form.barcode ? [form.barcode] : [],
-          price, costPrice, taxRate: form.taxRate,
+          price, price2, brand, costPrice, taxRate: form.taxRate,
           lowStockThreshold: form.lowStockThreshold, unit: form.unit,
           categoryId, quickSaleGroupId: form.quickSaleGroupId, warehouseId: form.warehouseId,
         }
@@ -427,7 +436,7 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
         const input: CreateProductInput = {
           sku: form.sku, name: form.name,
           barcode: form.barcode ? [form.barcode] : [],
-          price, costPrice, taxRate: form.taxRate,
+          price, price2, brand, costPrice, taxRate: form.taxRate,
           stock: form.addedStock, lowStockThreshold: form.lowStockThreshold,
           unit: form.unit, categoryId, quickSaleGroupId: form.quickSaleGroupId, warehouseId: form.warehouseId,
         }
@@ -585,12 +594,20 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
             />
           )}
 
-          {/* Ürün Adı */}
-          <div className="mb-3">
-            <label className={labelClass} htmlFor="pf-name">Ürün Adı</label>
-            <input id="pf-name" type="text" value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              className={inputClass} />
+          {/* Ürün Adı | Marka */}
+          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-[2fr_1fr]">
+            <div>
+              <label className={labelClass} htmlFor="pf-name">Ürün Adı</label>
+              <input id="pf-name" type="text" value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass} htmlFor="pf-brand">Marka</label>
+              <input id="pf-brand" type="text" placeholder="ör. Eti, Ülker" value={form.brand}
+                onChange={e => setForm({ ...form, brand: e.target.value })}
+                className={inputClass} />
+            </div>
           </div>
 
           {/* Birim | Ürün Kodu */}
@@ -609,8 +626,8 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
             </div>
           </div>
 
-          {/* Alış Fiyatı + KDV Dahil | Satış Fiyatı + KDV Dahil */}
-          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          {/* Alış Fiyatı + KDV Dahil | Satış Fiyatı (Fiyat 1) + KDV Dahil | Fiyat 2 */}
+          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
               <label className={labelClass} htmlFor="pf-cost">Alış Fiyatı</label>
               <div className="flex gap-2">
@@ -625,7 +642,7 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
               </div>
             </div>
             <div>
-              <label className={labelClass} htmlFor="pf-price">Satış Fiyatı</label>
+              <label className={labelClass} htmlFor="pf-price">Satış Fiyatı (Fiyat 1)</label>
               <div className="flex gap-2">
                 <input id="pf-price" type="text" inputMode="decimal" placeholder="ör. 24.90" value={form.priceInput}
                   onChange={e => setForm({ ...form, priceInput: e.target.value })}
@@ -636,6 +653,14 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
                   KDV Dahil
                 </label>
               </div>
+            </div>
+            <div>
+              <label className={labelClass} htmlFor="pf-price2">
+                Fiyat 2 <span className="font-normal text-[var(--color-ink-soft)]">(opsiyonel — ör. toptan/bayi)</span>
+              </label>
+              <input id="pf-price2" type="text" inputMode="decimal" placeholder="Boş = sadece Fiyat 1" value={form.price2Input}
+                onChange={e => setForm({ ...form, price2Input: e.target.value })}
+                className={inputClass} />
             </div>
           </div>
 
@@ -773,10 +798,12 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
               <tr className="receipt-rule text-xs text-[var(--color-ink-soft)]">
                 <th className="pb-2 pt-1 text-left font-medium">Ürün Kodu</th>
                 <th className="pb-2 pt-1 text-left font-medium">Ad</th>
+                <th className="pb-2 pt-1 text-left font-medium">Marka</th>
                 <th className="pb-2 pt-1 text-left font-medium">Kategori</th>
                 <th className="pb-2 pt-1 text-left font-medium">Hızlı Ürün Grubu</th>
                 <th className="pb-2 pt-1 text-right font-medium">Alış</th>
-                <th className="pb-2 pt-1 text-right font-medium">Satış</th>
+                <th className="pb-2 pt-1 text-right font-medium">Satış (F1)</th>
+                <th className="pb-2 pt-1 text-right font-medium">Fiyat 2</th>
                 <th className="pb-2 pt-1 text-right font-medium">Stok</th>
                 <th className="pb-2 pt-1 text-right font-medium">İşlem</th>
               </tr>
@@ -786,12 +813,14 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
                 <tr key={p.id} className={`border-b border-[var(--color-paper-line)]/60 ${!p.isActive ? 'opacity-50' : ''}`}>
                   <td className="py-1.5 text-xs text-[var(--color-ink-soft)]">{p.sku}</td>
                   <td className="py-1.5">{p.name}{!p.isActive && <span className="ml-1.5 text-xs text-[var(--color-copper)]">(pasif)</span>}</td>
+                  <td className="py-1.5 text-xs text-[var(--color-ink-soft)]">{p.brand ?? '—'}</td>
                   <td className="py-1.5 text-xs text-[var(--color-ink-soft)]">{categoryPath(p.categoryId)}</td>
                   <td className="py-1.5 text-xs text-[var(--color-ink-soft)]">
                     {p.quickSaleGroupId ? (quickSaleGroups.find(g => g.id === p.quickSaleGroupId)?.name ?? '—') : '—'}
                   </td>
                   <td className="tabular-money py-1.5 text-right text-xs text-[var(--color-ink-soft)]">{p.costPrice != null ? money(p.costPrice) : '—'}</td>
                   <td className="tabular-money py-1.5 text-right">{money(p.price)}</td>
+                  <td className="tabular-money py-1.5 text-right text-xs text-[var(--color-ink-soft)]">{p.price2 != null ? money(p.price2) : '—'}</td>
                   <td className={`tabular-money py-1.5 text-right ${p.stock <= p.lowStockThreshold ? 'text-[var(--color-copper)]' : ''}`}>{p.stock}</td>
                   <td className="py-1.5 text-right">
                     <button className="mr-2 text-xs font-medium text-[var(--color-petrol)] hover:underline" onClick={() => startEdit(p)}>

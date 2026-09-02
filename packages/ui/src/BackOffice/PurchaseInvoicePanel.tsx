@@ -3,9 +3,10 @@
 // Alış Faturası Oluştur — purchase invoice creation, matching the
 // user-provided mockup (ALISFATOLUS.jpg), scoped to the core flow:
 // barkod ara/tara, ürün seç, miktar+birim fiyat+iskonto+KDV, canlı
-// toplamlar, Nakit/Kredi Kartı/Çek/Açık Hesap ödeme. Excel import,
-// çoklu iskonto katmanı, and multi-branch price sync from the mockup
-// are out of scope for this MVP (agreed with the user).
+// toplamlar, Nakit/Kredi Kartı/Çek/Açık Hesap ödeme. Excel import and
+// multi-branch price sync from the mockup are out of scope for this
+// MVP (agreed with the user). İskonto 1 + İskonto 2 (kademeli/cascading
+// discount layers) WAS added later — see computeLine's comment.
 //
 // Each line's discountAmount/taxAmount are line TOTALS (not
 // per-unit) — see schema.prisma's PurchaseLine comment for why this
@@ -44,7 +45,8 @@ type LineForm = {
   quantity: string
   unitCostInput: string
   taxInclusive: boolean
-  discountPercent: string
+  discountPercent1: string
+  discountPercent2: string
   taxRate: number
   notFoundName: string // shown when barcode doesn't match any product — quick-create flow
 }
@@ -53,12 +55,14 @@ function emptyLine(): LineForm {
   return {
     key: crypto.randomUUID(),
     barcode: '', productId: null, productName: '', salePrice: null, currentStock: null,
-    quantity: '1', unitCostInput: '', taxInclusive: true, discountPercent: '0', taxRate: 0.20,
+    quantity: '1', unitCostInput: '', taxInclusive: true, discountPercent1: '0', discountPercent2: '0', taxRate: 0.20,
     notFoundName: '',
   }
 }
 
-/** Per-line computed amounts, all in kuruş. Discount is applied on the gross (KDV dahil) line total. */
+/** Per-line computed amounts, all in kuruş. Discount is applied on the gross (KDV dahil)
+ * line total, kademeli (cascading) — İskonto 1 first, then İskonto 2 on what's left, matching
+ * standard Turkish wholesale invoicing (e.g. "%10 + %5" ≠ "%15"). */
 function computeLine(line: LineForm) {
   const qty = Number(line.quantity.replace(',', '.')) || 0
   const unitTl = Number(line.unitCostInput.replace(',', '.')) || 0
@@ -66,9 +70,11 @@ function computeLine(line: LineForm) {
   const grossPerUnit = line.taxInclusive ? unitKurus : Math.round(unitKurus * (1 + line.taxRate))
 
   const grossTotal = Math.round(grossPerUnit * qty)
-  const discountPct = Math.min(100, Math.max(0, Number(line.discountPercent.replace(',', '.')) || 0))
-  const discountAmount = Math.round(grossTotal * (discountPct / 100))
-  const grossAfterDiscount = grossTotal - discountAmount
+  const discountPct1 = Math.min(100, Math.max(0, Number(line.discountPercent1.replace(',', '.')) || 0))
+  const discountPct2 = Math.min(100, Math.max(0, Number(line.discountPercent2.replace(',', '.')) || 0))
+  const afterDiscount1 = grossTotal - Math.round(grossTotal * (discountPct1 / 100))
+  const grossAfterDiscount = afterDiscount1 - Math.round(afterDiscount1 * (discountPct2 / 100))
+  const discountAmount = grossTotal - grossAfterDiscount
   const netAfterDiscount = Math.round(grossAfterDiscount / (1 + line.taxRate))
   const taxAmount = grossAfterDiscount - netAfterDiscount
 
@@ -270,7 +276,7 @@ export function PurchaseInvoicePanel() {
               <th className="pb-2 pt-1 text-right font-medium">Miktar *</th>
               <th className="pb-2 pt-1 text-right font-medium">Birim Fiy.</th>
               <th className="pb-2 pt-1 text-center font-medium">KDV Dahil</th>
-              <th className="pb-2 pt-1 text-right font-medium">İsk. %</th>
+              <th className="pb-2 pt-1 text-right font-medium">İsk.1 % / İsk.2 %</th>
               <th className="pb-2 pt-1 text-right font-medium">KDV %</th>
               <th className="pb-2 pt-1 text-right font-medium">Tutar</th>
               <th></th>
@@ -327,10 +333,15 @@ export function PurchaseInvoicePanel() {
                   <td className="py-1.5 text-center">
                     <input type="checkbox" checked={line.taxInclusive} onChange={e => updateLine(line.key, { taxInclusive: e.target.checked })} />
                   </td>
-                  <td className="w-16 py-1.5">
-                    <input type="text" inputMode="decimal" value={line.discountPercent}
-                      onChange={e => updateLine(line.key, { discountPercent: e.target.value })}
-                      className={`${inputClass} text-right`} />
+                  <td className="w-28 py-1.5">
+                    <div className="flex gap-1">
+                      <input type="text" inputMode="decimal" title="İskonto 1 %" placeholder="İsk.1" value={line.discountPercent1}
+                        onChange={e => updateLine(line.key, { discountPercent1: e.target.value })}
+                        className={`${inputClass} text-right`} />
+                      <input type="text" inputMode="decimal" title="İskonto 2 %" placeholder="İsk.2" value={line.discountPercent2}
+                        onChange={e => updateLine(line.key, { discountPercent2: e.target.value })}
+                        className={`${inputClass} text-right`} />
+                    </div>
                   </td>
                   <td className="w-20 py-1.5">
                     <select value={line.taxRate} onChange={e => updateLine(line.key, { taxRate: Number(e.target.value) })} className={inputClass}>

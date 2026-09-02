@@ -10,7 +10,9 @@ export interface Product {
   sku: string
   name: string
   barcode: string[]
-  price: number        // stored in smallest currency unit (kuruş / cent)
+  price: number        // stored in smallest currency unit (kuruş / cent) — "Fiyat 1"
+  price2: number | null      // optional second selling price (e.g. wholesale/bayi) — "Fiyat 2". Cashier picks which one to charge in Hızlı Satış.
+  brand: string | null       // free-text brand/manufacturer label — no separate lookup table
   costPrice: number | null   // Alış fiyatı (KDV dahil, kuruş) — null for products created before this field existed
   taxRate: number      // e.g. 0.18 for 18% VAT
   stock: number

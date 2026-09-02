@@ -15,6 +15,8 @@ export function toDomainProduct(row: PrismaProduct): Product {
     name: row.name,
     barcode: row.barcode,
     price: row.price,
+    price2: row.price2,
+    brand: row.brand,
     costPrice: row.costPrice,
     taxRate: row.taxRate,
     stock: row.stock,

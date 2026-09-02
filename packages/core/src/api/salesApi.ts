@@ -169,6 +169,8 @@ export type CreateProductInput = {
   name: string
   barcode?: string[]
   price: number
+  price2?: number | null
+  brand?: string | null
   costPrice?: number | null
   taxRate: number
   stock?: number
@@ -183,6 +185,8 @@ export type UpdateProductInput = {
   name: string
   barcode: string[]
   price: number
+  price2?: number | null
+  brand?: string | null
   costPrice?: number | null
   taxRate: number
   lowStockThreshold: number

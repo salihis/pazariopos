@@ -49,6 +49,8 @@ model Product {
   barcode  String[] // Postgres native array — multiple barcodes per product
 
   price             Int          // Satış fiyatı — KDV dahil, kuruş/cent (bkz. saleMapper.ts taxRate reconstruction)
+  price2            Int?         @map("price_2") // İkinci satış fiyatı (ör. toptan/bayi fiyatı) — KDV dahil, kuruş/cent. Nullable: opsiyonel, çoğu üründe boş kalabilir. Hızlı Satış'ta kasiyer "Fiyat 1"/"Fiyat 2" arasında seçer.
+  brand             String?      // Marka — serbest metin, ayrı bir lookup tablosu değil (Category/QuickSaleGroup'tan farklı olarak — burada sadece bilgi amaçlı bir etiket, filtre/grup mantığı yok)
   costPrice         Int?         @map("cost_price") // Alış fiyatı — KDV dahil, kuruş/cent. Nullable: bu alan eklenmeden önceki ürünlerde boş.
   taxRate           Float        @map("tax_rate")
   stock             Int          @default(0)

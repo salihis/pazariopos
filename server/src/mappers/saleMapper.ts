@@ -49,6 +49,8 @@ function toCartLine(line: PrismaSaleLine): CartLine {
       unit: 'piece',
       categoryId: null,
       quickSaleGroupId: null,
+      price2: null,
+      brand: null,
       warehouseId: '',
       isActive: true,
     },

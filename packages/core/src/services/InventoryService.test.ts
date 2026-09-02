@@ -21,6 +21,8 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   unit: 'piece',
   categoryId: 'cat-1',
   quickSaleGroupId: null,
+  price2: null,
+  brand: null,
   isActive: true, costPrice: null,
   warehouseId: 'wh-1',
   ...overrides,

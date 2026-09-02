@@ -40,7 +40,10 @@ import { money, parseMoneyInput } from './lib/format'
 import { BackOfficeScreen } from './BackOffice/BackOfficeScreen'
 import { CameraScanner } from './components/CameraScanner'
 
-function productToCartLine(product: Product, quantity = 1): CartLine {
+// `priceTier`: 1 = product.price ("Fiyat 1"), 2 = product.price2 ("Fiyat 2").
+// Falls back to Fiyat 1 whenever a product has no Fiyat 2 set (most
+// products — Fiyat 2 is optional, e.g. for wholesale/bayi customers).
+function productToCartLine(product: Product, quantity = 1, priceTier: 1 | 2 = 1): CartLine {
   const discountAmount = 0
 
   // product.price is the tax-INCLUSIVE (KDV dahil) shelf/barcode price —
@@ -52,7 +55,7 @@ function productToCartLine(product: Product, quantity = 1): CartLine {
   //   netUnitPrice = 32.00 / 1.10 = 29.09
   //   taxAmount    = 32.00 - 29.09 = 2.91
   //   netUnitPrice + taxAmount = 32.00  ✓ (matches the shelf price exactly)
-  const grossUnitPrice = product.price
+  const grossUnitPrice = (priceTier === 2 ? product.price2 : null) ?? product.price
   const netUnitPrice = Math.round(grossUnitPrice / (1 + product.taxRate))
   const taxAmount = grossUnitPrice - netUnitPrice
 
@@ -95,6 +98,14 @@ export function PosScreen() {
   const recordPayment    = useAccountStore(s => s.recordPayment)
 
   const currentUser      = useAuthStore(s => s.currentUser)
+
+  // ── Fiyat 1 / Fiyat 2 selector — which of the product's two selling
+  //    prices to charge (e.g. Fiyat 2 for a wholesale/bayi customer).
+  //    Applies to every item added from this point on (scan, quick-add
+  //    tile, or search) until changed back. Products with no Fiyat 2
+  //    set fall back to Fiyat 1 regardless of this setting — see
+  //    productToCartLine. ──
+  const [priceTier, setPriceTier] = useState<1 | 2>(1)
   const isAuthenticating = useAuthStore(s => s.isAuthenticating)
   const authError        = useAuthStore(s => s.error)
   const login            = useAuthStore(s => s.login)
@@ -160,12 +171,12 @@ export function PosScreen() {
   // ── Manual add (keyboard-less demo / touch screen) ──────
   // ── Select a product from the name-search dropdown ──────
   const handleSelectSearchResult = useCallback((product: Product) => {
-    addLine(productToCartLine(product))
+    addLine(productToCartLine(product, 1, priceTier))
     setScanFeedback(`Eklendi: ${product.name}`)
     setSearchQuery('')
     setShowSuggestions(false)
     searchInputRef.current?.focus()
-  }, [addLine])
+  }, [addLine, priceTier])
 
   // ── Shared "resolve a raw scanned/typed value to a product" step.
   //    Used by the manual search box (Enter key), the global HID/Tauri
@@ -176,7 +187,7 @@ export function PosScreen() {
   const resolveScannedValue = useCallback((query: string, suggestions: Product[]) => {
     const product = findByBarcode(query)
     if (product) {
-      addLine(productToCartLine(product))
+      addLine(productToCartLine(product, 1, priceTier))
       setScanFeedback(`Eklendi: ${product.name}`)
       setNotFoundQuery(null)
       setSearchQuery('')
@@ -196,7 +207,7 @@ export function PosScreen() {
 
     setScanFeedback(null)
     setNotFoundQuery(query)
-  }, [findByBarcode, addLine, handleSelectSearchResult])
+  }, [findByBarcode, addLine, priceTier, handleSelectSearchResult])
 
   // ── Barcode scanning (physical HID scanner / Tauri hardware event).
   //    Placed after resolveScannedValue's definition — it's a plain
@@ -268,6 +279,8 @@ export function PosScreen() {
       name,
       barcode: [],
       price,
+      price2: null,
+      brand: null,
       costPrice: null,
       taxRate: 0.18,
       stock: 0,
@@ -494,6 +507,26 @@ export function PosScreen() {
                  every reference POS layout's barcode field. ── */}
             <section className="rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-4">
               <div className="flex gap-2">
+                {/* ── Fiyat 1 / Fiyat 2 selector — mirrors the reference
+                     POS layouts' price-tier dropdown at the top-left of
+                     the scan bar. Affects every item added from this
+                     point forward (see productToCartLine's priceTier
+                     param); products with no Fiyat 2 set always charge
+                     Fiyat 1 regardless of this setting. ── */}
+                <select
+                  value={priceTier}
+                  onChange={e => setPriceTier(Number(e.target.value) === 2 ? 2 : 1)}
+                  title="Bu ürün için hangi fiyat uygulanacak"
+                  className={`shrink-0 rounded-xl border px-2.5 py-3.5 text-sm font-medium outline-none ${
+                    priceTier === 2
+                      ? 'border-[var(--color-copper)] bg-[var(--color-copper)]/10 text-[var(--color-copper)]'
+                      : 'border-[var(--color-paper-line)] bg-white text-[var(--color-ink)]'
+                  }`}
+                >
+                  <option value={1}>Fiyat 1</option>
+                  <option value={2}>Fiyat 2</option>
+                </select>
+
                 <div className="relative flex-1">
                   <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-lg text-[var(--color-ink-soft)]">
                     ⌕
@@ -543,7 +576,9 @@ export function PosScreen() {
                                 {product.barcode[0] ?? product.sku}
                               </span>
                             </span>
-                            <span className="tabular-money text-[var(--color-petrol)]">{money(product.price)}</span>
+                            <span className="tabular-money text-[var(--color-petrol)]">
+                              {money((priceTier === 2 ? product.price2 : null) ?? product.price)}
+                            </span>
                           </button>
                         </li>
                       ))}
@@ -732,7 +767,12 @@ export function PosScreen() {
                           className={`rounded-xl border p-3 text-left text-sm transition ${tileTone}`}
                         >
                           <div className="line-clamp-2 font-medium text-[var(--color-ink)]">{product.name}</div>
-                          <div className="tabular-money mt-1 text-xs text-[var(--color-ink-soft)]">{money(product.price)}</div>
+                          <div className="tabular-money mt-1 text-xs text-[var(--color-ink-soft)]">
+                            {money((priceTier === 2 ? product.price2 : null) ?? product.price)}
+                            {priceTier === 2 && product.price2 != null && (
+                              <span className="ml-1 text-[10px] text-[var(--color-copper)]">F2</span>
+                            )}
+                          </div>
                         </button>
                       )
                     })}

@@ -53,20 +53,27 @@ export default function SettingsScreen() {
   }
 
   const handleTestConnection = async () => {
+    // RequestInit has no `timeout` option (browsers/React Native's fetch both
+    // ignore it silently) — AbortController is the correct way to actually
+    // cancel a hung request after N ms instead of waiting forever.
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
     try {
-      const response = await fetch(`${apiUrl}/health`, {
+      const response = await fetch(`${apiUrl}/api/health`, {
         method: 'GET',
-        timeout: 5000
+        signal: controller.signal,
       })
-      
+
       if (response.ok) {
         Alert.alert('Başarılı', 'Sunucuya bağlantı sağlandı!')
       } else {
         Alert.alert('Uyarı', `Sunucu yanıt verdi: ${response.status}`)
       }
     } catch (error) {
-      Alert.alert('Bağlantı Hatası', 'Sunucuya ulaşılamadı. Lütfen URL'yi kontrol edin.')
+      Alert.alert('Bağlantı Hatası', "Sunucuya ulaşılamadı. Lütfen URL'yi kontrol edin.")
       console.error('Connection test failed:', error)
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 

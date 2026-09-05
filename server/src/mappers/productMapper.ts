@@ -24,6 +24,7 @@ export function toDomainProduct(row: PrismaProduct): Product {
     unit: row.unit,
     categoryId: row.categoryId,
     quickSaleGroupId: row.quickSaleGroupId,
+    imageUrl: row.imageUrl,
     warehouseId: row.warehouseId,
     isActive: row.isActive,
   }

@@ -60,6 +60,12 @@ model Product {
   categoryId  String?      @map("category_id")
   warehouseId String       @default("default") @map("warehouse_id")
   isActive    Boolean      @default(true) @map("is_active")
+  // Path under /api/uploads/products/<filename> — served by the server's
+  // @fastify/static from a PERSISTENT Docker volume (server/src/main.ts),
+  // never the container's own ephemeral filesystem, since the server
+  // container gets rebuilt on every deploy. Uploaded via POST
+  // /api/products/:id/image (multipart) — see routes/products.ts.
+  imageUrl    String?      @map("image_url")
 
   category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 

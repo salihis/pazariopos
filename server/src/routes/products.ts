@@ -19,6 +19,11 @@
 
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
+import { randomUUID } from 'node:crypto'
+import { mkdir, unlink } from 'node:fs/promises'
+import { createWriteStream } from 'node:fs'
+import { pipeline } from 'node:stream/promises'
+import path from 'node:path'
 
 import { prisma } from '../db/prisma'
 import { createProductSchema, updateProductSchema, adjustStockSchema } from '../schemas/product'
@@ -31,6 +36,17 @@ const listQuerySchema = z.object({
   // back-office ProductsPanel passes includeInactive=true to manage them.
   includeInactive: z.coerce.boolean().default(false),
 })
+
+// Must match main.ts's UPLOADS_DIR default/env exactly — that's where
+// @fastify/static serves this from, at /api/uploads/.
+const uploadsDir = process.env.UPLOADS_DIR ?? path.join(process.cwd(), 'uploads')
+const productImagesDir = path.join(uploadsDir, 'products')
+
+const ALLOWED_IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+}
 
 export const productsRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/products — full catalog ──
@@ -149,5 +165,82 @@ export const productsRoutes: FastifyPluginAsync = async (app) => {
       app.log.error(err, 'Failed to adjust stock')
       return reply.code(500).send({ error: 'InternalError', message: 'Could not adjust stock.' })
     }
+  })
+
+  // ── POST /api/products/:id/image — upload/replace product photo ──
+  // Multipart upload (see main.ts's @fastify/multipart registration for
+  // the size limit). Saves to a persistent volume, NOT the container's
+  // own filesystem — see schema.prisma's Product.imageUrl comment.
+  app.post('/:id/image', { preHandler: [app.authenticate, app.requireRole('admin', 'warehouse')] }, async (req, reply) => {
+    const paramsResult = paramsSchema.safeParse(req.params)
+    if (!paramsResult.success) {
+      return reply.code(400).send({ error: 'ValidationError', issues: paramsResult.error.issues })
+    }
+    const { id } = paramsResult.data
+
+    const existing = await prisma.product.findUnique({ where: { id } })
+    if (!existing) {
+      return reply.code(404).send({ error: 'NotFound', message: `Product "${id}" does not exist.` })
+    }
+
+    const file = await req.file()
+    if (!file) {
+      return reply.code(400).send({ error: 'ValidationError', message: 'Resim dosyası bulunamadı.' })
+    }
+
+    const ext = ALLOWED_IMAGE_EXTENSIONS[file.mimetype]
+    if (!ext) {
+      return reply.code(400).send({ error: 'ValidationError', message: 'Sadece JPEG, PNG veya WEBP resim yüklenebilir.' })
+    }
+
+    await mkdir(productImagesDir, { recursive: true })
+    const filename = `${randomUUID()}${ext}`
+    const filePath = path.join(productImagesDir, filename)
+
+    try {
+      await pipeline(file.file, createWriteStream(filePath))
+    } catch (err) {
+      app.log.error(err, 'Failed to write uploaded product image')
+      return reply.code(500).send({ error: 'InternalError', message: 'Resim kaydedilemedi.' })
+    }
+
+    // @fastify/multipart doesn't throw when the stream hits the
+    // configured size limit — it truncates silently and flags it here.
+    if (file.file.truncated) {
+      await unlink(filePath).catch(() => {})
+      return reply.code(413).send({ error: 'PayloadTooLarge', message: 'Resim çok büyük (maksimum 8MB).' })
+    }
+
+    // Best-effort cleanup of the previous image (if replacing one) — an
+    // orphaned file on disk is harmless; a DB row pointing at a missing
+    // file is not.
+    if (existing.imageUrl) {
+      await unlink(path.join(productImagesDir, path.basename(existing.imageUrl))).catch(() => {})
+    }
+
+    const imageUrl = `/api/uploads/products/${filename}`
+    const row = await prisma.product.update({ where: { id }, data: { imageUrl } })
+    return reply.send(toDomainProduct(row))
+  })
+
+  // ── DELETE /api/products/:id/image — remove product photo ──
+  app.delete('/:id/image', { preHandler: [app.authenticate, app.requireRole('admin', 'warehouse')] }, async (req, reply) => {
+    const paramsResult = paramsSchema.safeParse(req.params)
+    if (!paramsResult.success) {
+      return reply.code(400).send({ error: 'ValidationError', issues: paramsResult.error.issues })
+    }
+    const { id } = paramsResult.data
+
+    const existing = await prisma.product.findUnique({ where: { id } })
+    if (!existing) {
+      return reply.code(404).send({ error: 'NotFound', message: `Product "${id}" does not exist.` })
+    }
+
+    if (existing.imageUrl) {
+      await unlink(path.join(productImagesDir, path.basename(existing.imageUrl))).catch(() => {})
+    }
+
+    const row = await prisma.product.update({ where: { id }, data: { imageUrl: null } })
+    return reply.send(toDomainProduct(row))
   })
 }

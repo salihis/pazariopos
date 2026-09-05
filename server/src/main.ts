@@ -22,6 +22,9 @@ import 'dotenv/config'
 
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import multipart from '@fastify/multipart'
+import fastifyStatic from '@fastify/static'
+import path from 'node:path'
 
 import authPlugin              from './plugins/authPlugin'
 import { authRoutes }          from './routes/auth'
@@ -64,6 +67,29 @@ async function buildServer() {
       'https://tauri.localhost',
       'tauri://localhost',
     ],
+  })
+
+  // Product image uploads (routes/products.ts). 8 MiB is comfortably
+  // above any reasonable photo taken for a product listing, while still
+  // well under nginx's `client_max_body_size 10m` in front of this
+  // (deploy/nginx.pazariopos.snippet.conf) — a larger upload would 413
+  // at nginx before even reaching here.
+  await app.register(multipart, {
+    limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  })
+
+  // Serves whatever routes/products.ts's image-upload route saves —
+  // UPLOADS_DIR MUST point at a persistent Docker volume (see
+  // deploy/docker-compose.pazariopos.yml's pazariopos_uploads volume),
+  // never the container's own filesystem, which is wiped on every
+  // redeploy. Exposed at /api/uploads/... so the existing nginx routing
+  // (everything under /api/ → this server) reaches it with zero nginx
+  // config changes.
+  const uploadsDir = process.env.UPLOADS_DIR ?? path.join(process.cwd(), 'uploads')
+  await app.register(fastifyStatic, {
+    root: uploadsDir,
+    prefix: '/api/uploads/',
+    decorateReply: false,
   })
 
   await app.register(authPlugin)

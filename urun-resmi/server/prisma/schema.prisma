@@ -1,0 +1,617 @@
+// server/prisma/schema.prisma
+// ─────────────────────────────────────────────────────────────
+// Minimal schema to support the POS hello-world flow:
+//   • Sale + SaleLine + SalePayment  (persisted by POST /api/sales)
+//   • Account                        (queried by GET /api/accounts/:id/balance)
+//
+// Architecture rule: §2 DATABASE SCHEMA — this is a deliberately
+// small subset. Inventory, Accounts Receivable ledger entries, and
+// Finance tables (cash registers, cheques, etc.) are NOT included
+// yet; they belong to their own modules (see ARCHITECTURE.md §2).
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider      = "prisma-client-js"
+  // Switching server/Dockerfile from Alpine to Debian-slim (previous
+  // fix) didn't fully solve this on its own: during the Docker BUILD
+  // stage, `prisma generate` ran before openssl was installed (that
+  // apt-get only happened in the RUNTIME stage), so "native"
+  // detection guessed the wrong OpenSSL version (1.1.x) instead of
+  // what's actually present at runtime (3.0.x). Explicit target here
+  // is the fix Prisma's own error message suggests; server/Dockerfile
+  // also now installs openssl in the BUILD stage too, so future
+  // "native" detection is correct on its own as well.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Product (MVP — single implicit warehouse, no lot/serial tracking yet) ──
+// See ARCHITECTURE.md's Inventory prompt (§4) for the full long-term scope
+// (multi-warehouse, FIFO/LIFO costing, lot tracking, ABC analysis). This is
+// deliberately the minimal slice: stock level + low-stock threshold, enough
+// to back real checkout + a low-stock warning in the UI.
+
+enum ProductUnit {
+  piece
+  box
+  kg
+  lt
+}
+
+model Product {
+  id       String   @id @default(uuid())
+  sku      String   @unique
+  name     String
+  barcode  String[] // Postgres native array — multiple barcodes per product
+
+  price             Int          // Satış fiyatı — KDV dahil, kuruş/cent (bkz. saleMapper.ts taxRate reconstruction)
+  price2            Int?         @map("price_2") // İkinci satış fiyatı (ör. toptan/bayi fiyatı) — KDV dahil, kuruş/cent. Nullable: opsiyonel, çoğu üründe boş kalabilir. Hızlı Satış'ta kasiyer "Fiyat 1"/"Fiyat 2" arasında seçer.
+  brand             String?      // Marka — serbest metin, ayrı bir lookup tablosu değil (Category/QuickSaleGroup'tan farklı olarak — burada sadece bilgi amaçlı bir etiket, filtre/grup mantığı yok)
+  costPrice         Int?         @map("cost_price") // Alış fiyatı — KDV dahil, kuruş/cent. Nullable: bu alan eklenmeden önceki ürünlerde boş.
+  taxRate           Float        @map("tax_rate")
+  stock             Int          @default(0)
+  lowStockThreshold Int          @default(0) @map("low_stock_threshold")
+  unit              ProductUnit  @default(piece)
+
+  categoryId  String?      @map("category_id")
+  warehouseId String       @default("default") @map("warehouse_id")
+  isActive    Boolean      @default(true) @map("is_active")
+  // Path under /api/uploads/products/<filename> — served by the server's
+  // @fastify/static from a PERSISTENT Docker volume (server/src/main.ts),
+  // never the container's own ephemeral filesystem, since the server
+  // container gets rebuilt on every deploy. Uploaded via POST
+  // /api/products/:id/image (multipart) — see routes/products.ts.
+  imageUrl    String?      @map("image_url")
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Independent from `category` (which is the accounting-oriented Gelir/Gider
+  // product tree). This only controls whether/where a product shows up in
+  // the POS "Hızlı Ürünler" quick-add grid — with ~1000 SKUs in the catalog,
+  // that grid needs its own opt-in curation (top sellers), separate from
+  // whatever category structure the back office uses for reporting.
+  quickSaleGroupId String?          @map("quick_sale_group_id")
+  quickSaleGroup   QuickSaleGroup?  @relation(fields: [quickSaleGroupId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([warehouseId])
+  @@index([categoryId])
+  @@index([quickSaleGroupId])
+  @@map("products")
+}
+
+// Flat (no hierarchy — deliberately simpler than Category's Ana/Alt tree,
+// since its only job is "which quick-add tab does this product sit under").
+model QuickSaleGroup {
+  id       String    @id @default(uuid())
+  name     String    @unique
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("quick_sale_groups")
+}
+
+// ── Sale ─────────────────────────────────────────────────────
+
+enum SaleStatus {
+  completed
+  returned
+  partial_return
+  voided
+}
+
+enum SyncStatus {
+  synced
+  pending
+  conflict
+  error
+}
+
+model Sale {
+  id         String   @id @default(uuid())
+  localId    String   @unique @map("local_id")
+
+  branchId   String   @map("branch_id")
+  registerId String   @map("register_id")
+  cashierId  String   @map("cashier_id")
+  customerId String?  @map("customer_id")
+
+  subtotal      Int
+  discountTotal Int @map("discount_total")
+  taxTotal      Int @map("tax_total")
+  grandTotal    Int @map("grand_total")
+  changeGiven   Int @map("change_given")
+
+  status SaleStatus @default(completed)
+
+  // Sync bookkeeping — set by the device that created the sale
+  deviceId   String?     @map("device_id")
+  syncStatus SyncStatus  @default(synced) @map("sync_status")
+  syncedAt   DateTime?   @map("synced_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  lines    SaleLine[]
+  payments SalePayment[]
+
+  @@index([branchId])
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("sales")
+}
+
+model SaleLine {
+  id        String @id @default(uuid())
+  saleId    String @map("sale_id")
+
+  productId   String @map("product_id")
+  productName String @map("product_name")   // denormalized snapshot at time of sale
+
+  quantity        Int
+  unitPrice       Int @map("unit_price")
+  discountAmount  Int @map("discount_amount")
+  taxAmount       Int @map("tax_amount")
+  total           Int
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_lines")
+}
+
+model SalePayment {
+  id     String @id @default(uuid())
+  saleId String @map("sale_id")
+
+  method    String   // 'cash' | 'card' | 'transfer' | 'cheque' | 'account'
+  amount    Int
+  reference String?
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_payments")
+}
+
+// ── Alış Faturası / Purchase Invoices — mirror of Sale/SaleLine/
+// SalePayment above, in the opposite direction: stock INCREASES,
+// and an 'account' payment posts to the SUPPLIER's ledger as a
+// `purchase` transaction (decreases Account.balance — see
+// TransactionType.purchase comment above for the sign rationale). ──
+
+model Purchase {
+  id            String @id @default(uuid())
+  invoiceNumber String? @map("invoice_number")
+  supplierId    String? @map("supplier_id") // nullable — "Firmasız" (no company) is valid
+  warehouseId   String  @default("default") @map("warehouse_id")
+  userId        String  @map("user_id")     // who recorded this invoice
+
+  subtotal      Int
+  discountTotal Int @map("discount_total")
+  taxTotal      Int @map("tax_total")
+  grandTotal    Int @map("grand_total")
+
+  invoiceDate DateTime @map("invoice_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  supplier Account? @relation(fields: [supplierId], references: [id])
+  lines    PurchaseLine[]
+  payments PurchasePayment[]
+
+  @@index([supplierId])
+  @@index([createdAt])
+  @@map("purchases")
+}
+
+model PurchaseLine {
+  id         String @id @default(uuid())
+  purchaseId String @map("purchase_id")
+
+  productId   String @map("product_id")
+  productName String @map("product_name") // denormalized snapshot, same rationale as SaleLine
+
+  quantity       Int
+  unitCost       Int @map("unit_cost")       // per-unit, KDV dahil (gross)
+  discountAmount Int @map("discount_amount") // TOTAL for this line (not per-unit — unlike
+                                              // SaleLine, nothing needs to reconstruct a rate
+                                              // from this later, so the simpler total-based
+                                              // convention is used instead)
+  taxAmount      Int @map("tax_amount")      // TOTAL tax for this line (same reasoning)
+  total          Int
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_lines")
+}
+
+model PurchasePayment {
+  id         String @id @default(uuid())
+  purchaseId String @map("purchase_id")
+
+  method    String // 'cash' | 'card' | 'transfer' | 'cheque' | 'account'
+  amount    Int
+  reference String?
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseId])
+  @@map("purchase_payments")
+}
+
+// ── Cari Hesap / Accounts Receivable-Payable (Phase 1-3 — see
+// POS_ERP_Sistem_Prompt.md §5 for full long-term scope; Phase 4-5
+// (PDF statements, FX, bulk SMS/email) are explicitly out of scope
+// for now — those need external service integrations). ──
+
+enum AccountType {
+  customer
+  supplier
+  employee
+  other
+}
+
+enum TransactionType {
+  invoice    // sale posted to account ("veresiye") — increases balance
+  payment    // balance paid down — decreases balance. NOTE: accounts.ts's
+             // /accounts/:id/payment endpoint currently always posts this
+             // with a NEGATIVE amount, which is only correct for
+             // customer/employee/other accounts (positive balance = they
+             // owe us). For a supplier (negative balance = we owe them),
+             // "paying them down" should INCREASE balance instead — this
+             // is the same direction bug already deferred for
+             // AccountsPanel's "Ödeme Al" button (see CHECKLIST.md). The
+             // new `purchase` type below is unaffected by this — it's a
+             // one-way "invoice received" posting, not a payoff.
+  return     // sale return credited to account — decreases balance
+  purchase   // supplier invoice posted to account ("açık hesap alış") — DECREASES
+             // balance. Mirror-image of `invoice`: Account.balance is always "what this
+             // counterparty owes us, net" regardless of type — for a supplier that's
+             // normally negative (we owe THEM), so billing us more makes it more negative.
+  transfer   // manual balance transfer between accounts
+  interest   // late-payment interest (Phase 3)
+  fx_diff    // period-end FX difference (Phase 5 — not implemented yet)
+}
+
+model Account {
+  id   String      @id @default(uuid())
+  name String
+  type AccountType @default(customer)
+
+  taxNumber String?  @map("tax_number")
+  address   String?
+  phone     String?
+  email     String?
+  ibanList  String[] @map("iban_list")
+
+  creditLimit     Int   @default(0) @map("credit_limit")        // 0 = no limit enforced
+  paymentTermDays Int   @default(0) @map("payment_term_days")   // used to compute invoice due dates
+  discountRate    Float @default(0) @map("discount_rate")
+
+  balance Int @default(0)   // running net balance (minor currency units) — kept in
+                             // sync transactionally by every AccountTransaction, never
+                             // recomputed by summing the ledger on read
+
+  transactions AccountTransaction[]
+  purchases    Purchase[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@map("accounts")
+}
+
+model AccountTransaction {
+  id        String @id @default(uuid())
+  accountId String @map("account_id")
+
+  type   TransactionType
+  amount Int   // positive = increases balance owed (debit), negative = decreases (credit)
+
+  // Open-item matching (Phase 2): starts equal to `amount`'s absolute value for
+  // invoices, decreases as payments get matched against it. 0 = fully settled.
+  openAmount Int @default(0) @map("open_amount")
+
+  referenceSaleId     String?   @map("reference_sale_id")
+  referencePurchaseId String?   @map("reference_purchase_id")
+  description         String    @default("")
+  dueDate             DateTime? @map("due_date")   // set on invoice-type transactions
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Phase 2 open-item matching — this transaction can appear as either side:
+  //   • as an invoice being paid down (invoiceMatches)
+  //   • as a payment being applied to invoices (paymentMatches)
+  paymentMatches AccountTransactionMatch[] @relation("PaymentMatches")
+  invoiceMatches AccountTransactionMatch[] @relation("InvoiceMatches")
+
+  @@index([accountId])
+  @@index([dueDate])
+  @@map("account_transactions")
+}
+
+// Join table recording which payment settled how much of which invoice.
+// A single payment can be split across multiple invoices (oldest-first
+// auto-matching, or explicit caller-specified matches), and a single
+// invoice can be paid off across multiple partial payments over time.
+model AccountTransactionMatch {
+  id String @id @default(uuid())
+
+  paymentTransactionId String @map("payment_transaction_id")
+  invoiceTransactionId String @map("invoice_transaction_id")
+  matchedAmount         Int    @map("matched_amount")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  paymentTransaction AccountTransaction @relation("PaymentMatches", fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  invoiceTransaction AccountTransaction @relation("InvoiceMatches", fields: [invoiceTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([paymentTransactionId])
+  @@index([invoiceTransactionId])
+  @@map("account_transaction_matches")
+}
+
+// ── Gelir/Gider & Finans (Income/Expense & Finance) — Phase 1-3.
+// See POS_ERP_Sistem_Prompt.md §6 for full long-term scope; Phase 4-5
+// (budget/dashboard deviation analysis, bank statement CSV/OFX import +
+// auto-reconciliation) are explicitly out of scope for now. ──
+
+enum CategoryType {
+  income
+  expense
+  product
+}
+
+// Self-referencing tree — "Gelir/Gider kategori ağacı". Kept flat/simple
+// for Phase 1 (no drag-drop reordering — that's a UI concern, not data).
+model Category {
+  id       String       @id @default(uuid())
+  name     String
+  type     CategoryType
+  parentId String?      @map("parent_id")
+
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[]  @relation("CategoryHierarchy")
+  products Product[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+model CashRegister {
+  id      String @id @default(uuid())
+  name    String @default("Ana Kasa")
+  balance Int    @default(0)   // running balance, kept in sync transactionally
+
+  movements CashMovement[]
+  counts    CashCount[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("cash_registers")
+}
+
+enum MovementType {
+  in
+  out
+}
+
+model CashMovement {
+  id             String       @id @default(uuid())
+  cashRegisterId String       @map("cash_register_id")
+  type           MovementType
+  amount         Int
+  categoryId     String?      @map("category_id")
+
+  // Set when this movement was posted automatically by a cash sale
+  // (routes/sales.ts) or a cash-paid purchase invoice (routes/purchases.ts)
+  // rather than entered manually.
+  referenceSaleId     String? @map("reference_sale_id")
+  referencePurchaseId String? @map("reference_purchase_id")
+  description         String  @default("")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+
+  @@index([cashRegisterId])
+  @@map("cash_movements")
+}
+
+// Gün sonu kasa sayımı — compares the physically counted cash against the
+// system-calculated balance at that moment and records any difference.
+model CashCount {
+  id             String @id @default(uuid())
+  cashRegisterId String @map("cash_register_id")
+
+  expectedAmount Int    @map("expected_amount")   // CashRegister.balance at count time
+  countedAmount  Int    @map("counted_amount")    // physically counted
+  difference     Int                              // countedAmount - expectedAmount
+  notes          String @default("")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  cashRegister CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+
+  @@index([cashRegisterId])
+  @@map("cash_counts")
+}
+
+model BankAccount {
+  id       String  @id @default(uuid())
+  name     String
+  iban     String?
+  bankName String? @map("bank_name")
+  balance  Int     @default(0)
+
+  transactions BankTransaction[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("bank_accounts")
+}
+
+enum BankTransactionType {
+  deposit
+  withdrawal
+}
+
+model BankTransaction {
+  id            String              @id @default(uuid())
+  bankAccountId String              @map("bank_account_id")
+  type          BankTransactionType
+  amount        Int
+  categoryId    String?             @map("category_id")
+  description   String              @default("")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([bankAccountId])
+  @@map("bank_transactions")
+}
+
+// ── Çek/Senet (Cheques/Promissory Notes) — Phase 2 ──
+
+enum ChequeType {
+  customer_cheque   // müşteri çeki — we received this as payment
+  own_cheque        // kendi çekimiz — we issued this to a supplier
+}
+
+enum ChequeStatus {
+  in_wallet   // Cüzdanda
+  at_bank     // Bankada (deposited, awaiting clearing)
+  collected   // Tahsil edildi
+  returned    // İade (karşılıksız)
+  protested   // Protestolu
+}
+
+model Cheque {
+  id     String       @id @default(uuid())
+  type   ChequeType
+  status ChequeStatus @default(in_wallet)
+
+  amount       Int
+  chequeNumber String?  @map("cheque_number")
+  drawerName   String   @map("drawer_name")   // keşideci — who wrote the cheque
+  bankName     String?  @map("bank_name")
+  dueDate      DateTime @map("due_date")
+
+  accountId       String? @map("account_id")           // linked customer/supplier, if any
+  referenceSaleId String? @map("reference_sale_id")
+
+  notes String @default("")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([dueDate])
+  @@map("cheques")
+}
+
+// ── Stok Sayım (Physical Inventory Count) ──────────────────────
+// A count is a server-persisted DRAFT while in progress (so it survives
+// a page refresh, a browser restart, or continuing from a different
+// device — same rationale as CashCount, but this one is a multi-item
+// working session rather than a single snapshot, so it needs its own
+// draft/complete lifecycle instead of being created in one shot).
+//
+// Each scanned/typed product gets AT MOST ONE StockCountItem per count
+// (see @@unique below) — re-scanning the same product just overwrites
+// countedStock with the latest value, since a physical count means
+// "this is now the true quantity", not "add this many".
+//
+// "Sayımı Aktar" (POST /:id/complete) sets Product.stock = countedStock
+// for every item, all inside one transaction — see routes/stockCounts.ts.
+
+enum StockCountStatus {
+  draft
+  completed
+}
+
+model StockCount {
+  id          String           @id @default(uuid())
+  warehouseId String           @default("default") @map("warehouse_id")
+  status      StockCountStatus @default(draft)
+  userId      String           @map("user_id") // who started/owns this count
+
+  items StockCountItem[]
+
+  startedAt   DateTime  @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, status])
+  @@map("stock_counts")
+}
+
+model StockCountItem {
+  id           String @id @default(uuid())
+  stockCountId String @map("stock_count_id")
+
+  productId   String @map("product_id")
+  productName String @map("product_name") // denormalized snapshot, same convention as SaleLine
+  productSku  String @map("product_sku")
+
+  previousStock Int @map("previous_stock") // Product.stock at the moment this item was (re-)counted — audit trail
+  countedStock  Int @map("counted_stock")  // physically counted quantity
+
+  countedAt DateTime @updatedAt @map("counted_at") // bumps on re-scan/re-entry, not just first count
+
+  stockCount StockCount @relation(fields: [stockCountId], references: [id], onDelete: Cascade)
+
+  @@unique([stockCountId, productId])
+  @@index([stockCountId])
+  @@map("stock_count_items")
+}
+
+// ── Auth / Kullanıcı Yönetimi — Phase 1-3.
+// Roles mirror ARCHITECTURE.md §8 (Admin, Muhasebe, Kasiyer, Depo,
+// Sadece Görüntüleme). JWT-based, stateless — works identically for
+// web and desktop since both call the same Fastify API when online.
+
+enum UserRole {
+  admin        // Full access
+  accountant   // Muhasebe — accounts/finance, no user management
+  cashier      // Kasiyer — POS only
+  warehouse    // Depo — inventory only
+  viewer       // Sadece Görüntüleme — read-only everywhere
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  role         UserRole @default(cashier)
+  active       Boolean  @default(true)   // deactivated users can't log in, but their historical Sale.cashierId references stay intact
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}

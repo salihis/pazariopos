@@ -22,6 +22,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY . .
+# CI=true — without it, pnpm sometimes prompts interactively ("The
+# modules directories will be removed and reinstalled from scratch.
+# Proceed? (Y/n)") when its recorded node_modules state doesn't match
+# what it expects. Docker's non-TTY RUN context can't answer that
+# prompt, so the step "completes" almost instantly WITHOUT actually
+# reinstalling anything — silently leaving newly-added dependencies
+# missing (no error, no warning, just an incomplete node_modules).
+# CI=true makes pnpm behave deterministically and skip the prompt.
+ENV CI=true
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @pazariopos/server exec prisma generate
 RUN pnpm turbo run build --filter=@pazariopos/server

@@ -10,6 +10,12 @@ FROM node:20-alpine AS build
 RUN npm install -g pnpm@9.7.0
 WORKDIR /repo
 COPY . .
+# CI=true — prevents pnpm from interactively prompting ("modules
+# directories will be removed and reinstalled...") in this non-TTY
+# build context; without it, the prompt can silently short-circuit
+# the install without actually installing new dependencies. See
+# server/Dockerfile's matching comment for the full story.
+ENV CI=true
 RUN pnpm install --frozen-lockfile
 ENV NODE_OPTIONS=--max-old-space-size=1536
 RUN pnpm turbo run build --filter=@pazariopos/web

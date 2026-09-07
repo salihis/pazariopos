@@ -114,6 +114,8 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
   const [categories, setCategories] = useState<Category[]>([])
   const [quickSaleGroups, setQuickSaleGroups] = useState<QuickSaleGroup[]>([])
   const [showInactive, setShowInactive] = useState(false)
+  const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'out-of-stock'>('all')
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [listCameraOpen, setListCameraOpen] = useState(false)
@@ -495,18 +497,68 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
     await load()
   }, [load])
 
-  const filtered = products.filter(p =>
-    !search.trim() ||
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku.toLowerCase().includes(search.toLowerCase()) ||
-    p.barcode.some(b => b.toLowerCase().includes(search.toLowerCase())),
-  )
+  const filtered = products.filter(p => {
+    const matchesSearch = !search.trim() ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.sku.toLowerCase().includes(search.toLowerCase()) ||
+      p.barcode.some(b => b.toLowerCase().includes(search.toLowerCase()))
+    if (!matchesSearch) return false
+
+    if (stockFilter === 'in-stock' && p.stock <= 0) return false
+    if (stockFilter === 'out-of-stock' && p.stock > 0) return false
+
+    if (categoryFilter) {
+      // Selecting a main category also matches its subcategories'
+      // products — otherwise picking "Elektronik" would show nothing,
+      // since products are almost always filed under the subcategory
+      // (ör. "Telefon"), not the main category itself.
+      const selected = categories.find(c => c.id === categoryFilter)
+      const isMainCategorySelected = selected && !selected.parentId
+      const matchesCategory = p.categoryId === categoryFilter ||
+        (isMainCategorySelected && categories.find(c => c.id === p.categoryId)?.parentId === categoryFilter)
+      if (!matchesCategory) return false
+    }
+
+    return true
+  })
+
+  // Inventory valuation for whatever's currently listed (search/filter
+  // applied) — not the whole catalog. "Alış" total uses only products
+  // that actually have a costPrice set (older products created before
+  // that field existed have costPrice: null and are simply skipped,
+  // rather than treated as free).
+  const totalStockUnits = filtered.reduce((sum, p) => sum + p.stock, 0)
+  const totalCostValue = filtered.reduce((sum, p) => sum + (p.costPrice ?? 0) * p.stock, 0)
+  const totalSaleValue = filtered.reduce((sum, p) => sum + p.price * p.stock, 0)
 
   const inputClass = 'w-full rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--color-saffron)]'
   const labelClass = 'mb-1 block text-xs font-medium text-[var(--color-ink-soft)]'
 
   return (
     <div className="space-y-4">
+      {/* ── Stok durumu filtresi — sekme şeklinde, referans ekran
+           görüntüsündeki gibi. ── */}
+      <div className="flex flex-wrap gap-1.5 rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-2">
+        {([
+          ['all', 'Tüm Ürünler'],
+          ['in-stock', 'Stokta Olanlar'],
+          ['out-of-stock', 'Stokta Olmayanlar'],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setStockFilter(value)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              stockFilter === value
+                ? 'bg-[var(--color-petrol)] text-white'
+                : 'border border-[var(--color-paper-line)] bg-white text-[var(--color-ink-soft)] hover:border-[var(--color-petrol)]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-4">
         <input
           type="text"
@@ -515,6 +567,24 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
           onChange={e => setSearch(e.target.value)}
           className="flex-1 rounded-lg border border-[var(--color-paper-line)] bg-white px-3 py-2 text-sm outline-none focus:border-[var(--color-saffron)]"
         />
+        <label className="flex items-center gap-1.5 text-sm text-[var(--color-ink-soft)]">
+          Kategori:
+          <select
+            value={categoryFilter ?? ''}
+            onChange={e => setCategoryFilter(e.target.value || null)}
+            className="rounded-lg border border-[var(--color-paper-line)] bg-white px-2 py-1.5 text-sm outline-none focus:border-[var(--color-saffron)]"
+          >
+            <option value="">Tümü</option>
+            {mainCategories.map(main => (
+              <optgroup key={main.id} label={main.name}>
+                <option value={main.id}>{main.name} (tümü)</option>
+                {subCategoriesOf(main.id).map(sub => (
+                  <option key={sub.id} value={sub.id}>{sub.name}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
         <button
           className="rounded-lg border border-[var(--color-saffron)] bg-[var(--color-saffron)]/10 px-3 py-2 text-sm font-medium text-[var(--color-petrol)] transition hover:bg-[var(--color-saffron)]/20"
           onClick={() => setListCameraOpen(true)}
@@ -569,6 +639,27 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
         >
           + Yeni Ürün
         </button>
+      </div>
+
+      {/* ── Listelenen ürünlerin özet toplamları — arama/filtre uygulandığında
+           canlı güncellenir, tüm katalog değil sadece görünen ürünler için. ── */}
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-4 text-sm md:grid-cols-4">
+        <div>
+          <span className="text-[var(--color-ink-soft)]">Listelenen Ürün Sayısı: </span>
+          <strong className="tabular-money">{filtered.length}</strong>
+        </div>
+        <div>
+          <span className="text-[var(--color-ink-soft)]">Toplam Stok Adedi: </span>
+          <strong className="tabular-money">{totalStockUnits}</strong>
+        </div>
+        <div>
+          <span className="text-[var(--color-ink-soft)]">Toplam Alış Tutarı: </span>
+          <strong className="tabular-money">{money(totalCostValue)}</strong>
+        </div>
+        <div>
+          <span className="text-[var(--color-ink-soft)]">Toplam Satış Tutarı: </span>
+          <strong className="tabular-money">{money(totalSaleValue)}</strong>
+        </div>
       </div>
 
       {importOutcome && (

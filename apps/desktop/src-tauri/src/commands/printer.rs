@@ -85,18 +85,35 @@ pub async fn print_receipt(
     paper_width: u16,
     copies: u8,
     open_cash_drawer: bool,
+    shop_name: String,
+    shop_phone: String,
+    show_tax_breakdown: bool,
+    show_order_number: bool,
+    footer_message: String,
 ) -> AppResult<PrintResultDto> {
-    let mut builder = EscPosBuilder::new();
+            let mut builder = EscPosBuilder::new();
 
     builder
         .align(1) // center
         .bold(true)
         .font_size(true, true)
-        .text_line("POS RECEIPT")
+        .text_line("SATIS FISI")
         .font_size(false, false)
-        .bold(false)
-        .align(0) // left
-        .text_line(&format!("Sale : {}", &sale.local_id[..8.min(sale.local_id.len())]))
+        .bold(false);
+
+    if !shop_name.is_empty() {
+        builder.align(1).text_line(&shop_name);
+    }
+    if !shop_phone.is_empty() {
+        builder.align(1).text_line(&shop_phone);
+    }
+
+    builder.align(0); // left
+
+    if show_order_number {
+        builder.text_line(&format!("Sale : {}", &sale.local_id[..8.min(sale.local_id.len())]));
+    }
+    builder
         .text_line(&format!("Till : {}", sale.register_id))
         .text_line(&format!("Date : {}", sale.created_at))
         .divider(paper_width);
@@ -113,11 +130,16 @@ pub async fn print_receipt(
         builder.align(0);
     }
 
-    builder
+        builder
         .divider(paper_width)
         .text_line(&format!("Subtotal : {}", money(sale.subtotal)))
-        .text_line(&format!("Discount : -{}", money(sale.discount_total)))
-        .text_line(&format!("VAT      : {}", money(sale.tax_total)))
+        .text_line(&format!("Discount : -{}", money(sale.discount_total)));
+
+    if show_tax_breakdown {
+        builder.text_line(&format!("VAT      : {}", money(sale.tax_total)));
+    }
+
+    builder
         .bold(true)
         .font_size(false, true)
         .text_line(&format!("TOTAL    : {}", money(sale.grand_total)))
@@ -133,12 +155,18 @@ pub async fn print_receipt(
         builder.text_line(&format!("Change   : {}", money(sale.change_given)));
     }
 
+        let footer = if footer_message.is_empty() {
+        "Tesekkur ederiz!".to_string()
+    } else {
+        footer_message
+    };
+
     builder
         .divider(paper_width)
         .align(1)
-        .text_line("Thank you for your purchase!")
+        .text_line(&footer)
         .feed_lines(3);
-
+        
     if open_cash_drawer {
         builder.open_cash_drawer();
     }

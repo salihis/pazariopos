@@ -15,12 +15,21 @@ export interface PrinterConfig {
   paperWidth: PaperWidth
   copies: number
   openCashDrawer: boolean            // pulse drawer via DK-port after print
+
+  // ── Fiş içerik ayarları (ReceiptSettings'ten gelir) ──
+  shopName?: string
+  shopPhone?: string
+  showTaxBreakdown: boolean
+  showOrderNumber: boolean
+  footerMessage?: string
 }
 
 export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   paperWidth: 80,
   copies: 1,
   openCashDrawer: true,
+  showTaxBreakdown: true,
+  showOrderNumber: true,
 }
 
 // ── Print result ─────────────────────────────────────────────

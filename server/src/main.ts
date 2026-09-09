@@ -41,6 +41,7 @@ import { cashRegistersRoutes } from './routes/cashRegisters'
 import { bankAccountsRoutes }  from './routes/bankAccounts'
 import { chequesRoutes }       from './routes/cheques'
 import { reportsRoutes }       from './routes/reports'
+import { registerReceiptSettingsRoutes } from './routes/receiptSettings'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const HOST = process.env.HOST ?? '0.0.0.0'
@@ -108,6 +109,7 @@ async function buildServer() {
   await app.register(bankAccountsRoutes,  { prefix: '/api/bank-accounts' })
   await app.register(chequesRoutes,       { prefix: '/api/cheques' })
   await app.register(reportsRoutes,       { prefix: '/api/reports' })
+  await app.register(registerReceiptSettingsRoutes, { prefix: '/api/receipt-settings' })
 
   return app
 }

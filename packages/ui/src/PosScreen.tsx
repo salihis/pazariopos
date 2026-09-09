@@ -32,6 +32,7 @@ import {
   OfflineBalanceError,
   quickSaleGroupsApi,
   MISC_SALE_PRODUCT_ID,
+  useReceiptSettingsStore,
   type Product,
   type CartLine,
   type QuickSaleGroup,
@@ -136,9 +137,17 @@ export function PosScreen() {
   }, [])
 
   // ── Init store lifecycle (network monitor + queue seed) ────
+   // ── Init store lifecycle (network monitor + queue seed) ────
   useEffect(() => {
     const teardown = useSaleStore.getState().init()
     return teardown
+  }, [])
+
+  // ── Fetch receipt settings once on mount so checkout's printReceipt
+  //    call always has the saved shop name / footer / etc. ready, even
+  //    if the cashier never opens the Fiş Ayarları panel this session. ──
+  useEffect(() => {
+    void useReceiptSettingsStore.getState().fetchSettings()
   }, [])
 
   // ── Load the product catalog once logged in (Inventory MVP) ─
@@ -357,8 +366,16 @@ export function PosScreen() {
         { method, amount: grandTotal },
       ])
 
+      const receiptSettings = useReceiptSettingsStore.getState().settings
+
       const printer = getPrinterService()
-      const printResult = await printer.printReceipt(outcome.sale)
+      const printResult = await printer.printReceipt(outcome.sale, {
+        shopName: receiptSettings?.shopName,
+        shopPhone: receiptSettings?.shopPhone,
+        showTaxBreakdown: receiptSettings?.showTaxBreakdown,
+        showOrderNumber: receiptSettings?.showOrderNumber,
+        footerMessage: receiptSettings?.footerMessage,
+      })
       const receiptStatus = printResult.success ? 'yazdırıldı' : (printResult.errorMessage ?? 'yazdırma hatası')
 
       const methodLabel = method === 'account' ? 'veresiye (cari hesaba)' : method === 'card' ? 'kredi kartı' : 'nakit'

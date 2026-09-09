@@ -15,7 +15,7 @@ export class BrowserPrinterService implements IPrinterService {
 
   // ── IPrinterService ─────────────────────────────────────────
 
-  async printReceipt(
+    async printReceipt(
     sale: Sale,
     config: Partial<PrinterConfig> = {},
   ): Promise<PrintResult> {
@@ -25,7 +25,7 @@ export class BrowserPrinterService implements IPrinterService {
       console.warn('[BrowserPrinterService] Cash drawer pulse not supported in browser mode.')
     }
 
-    return this.#openAndPrint(buildReceiptHTML(sale))
+    return this.#openAndPrint(buildReceiptHTML(sale, cfg))
   }
 
   async printReport(

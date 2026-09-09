@@ -149,6 +149,27 @@ model Sale {
   @@map("sales")
 }
 
+model ReceiptSettings {
+  id        String   @id @default(cuid())
+  
+  // Başlık ve footer
+  shopName  String   @default("") // Fişin üstüne yazılacak dükkan adı
+  shopPhone String   @default("")
+  
+  // İçerik göster/gizle
+  
+  showTaxBreakdown    Boolean @default(true)  // KDV detayı gösterilsin mi? (18% KDV: X,XX ₺ gibi)
+  showOrderNumber     Boolean @default(true)  // Fiş numarası gösterilsin mi?
+  
+  // Footer metni
+  footerMessage String @default("") // "Bizi tercih ettiğiniz için teşekkür ederiz" gibi
+  
+  // Veri tutuluş
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("receipt_settings")
+}
 model SaleLine {
   id        String @id @default(uuid())
   saleId    String @map("sale_id")

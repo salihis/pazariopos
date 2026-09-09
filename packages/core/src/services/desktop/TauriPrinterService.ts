@@ -23,6 +23,11 @@ interface PrintReceiptArgs {
   paperWidth: number
   copies: number
   openCashDrawer: boolean
+  shopName: string
+  shopPhone: string
+  showTaxBreakdown: boolean
+  showOrderNumber: boolean
+  footerMessage: string
 }
 
 interface PrintReportArgs {
@@ -54,6 +59,11 @@ export class TauriPrinterService implements IPrinterService {
         paperWidth: cfg.paperWidth,
         copies: cfg.copies,
         openCashDrawer: cfg.openCashDrawer,
+        shopName: cfg.shopName ?? '',
+        shopPhone: cfg.shopPhone ?? '',
+        showTaxBreakdown: cfg.showTaxBreakdown,
+        showOrderNumber: cfg.showOrderNumber,
+        footerMessage: cfg.footerMessage ?? '',
       } satisfies PrintReceiptArgs)
 
       return this.#fromRust(result)

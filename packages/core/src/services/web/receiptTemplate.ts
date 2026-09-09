@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { Sale } from '../../types/domain'
+import type { PrinterConfig } from '../interfaces/IPrinterService'
 
 function formatCurrency(amount: number): string {
   return (amount / 100).toFixed(2)   // stored as integer cents/kuruş
@@ -18,7 +19,13 @@ function formatDate(iso: string): string {
   })
 }
 
-export function buildReceiptHTML(sale: Sale): string {
+export function buildReceiptHTML(sale: Sale, config?: Partial<PrinterConfig>): string {
+  const showTaxBreakdown = config?.showTaxBreakdown ?? true
+  const showOrderNumber = config?.showOrderNumber ?? true
+  const shopName = config?.shopName ?? ''
+  const shopPhone = config?.shopPhone ?? ''
+  const footerMessage = config?.footerMessage || 'Bizi tercih ettiğiniz için teşekkür ederiz!'
+
   const linesHTML = sale.lines.map(line => `
     <tr>
       <td>${line.product.name}</td>
@@ -39,21 +46,20 @@ export function buildReceiptHTML(sale: Sale): string {
   <meta charset="UTF-8"/>
   <title>Fiş #${sale.localId.slice(0, 8)}</title>
   <style>
-    /* ── Reset ── */
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* ── Receipt layout (58mm / 80mm thermal roll) ── */
     body {
       font-family: 'Courier New', Courier, monospace;
       font-size: 10pt;
-      width: 72mm;                /* fits both 58mm and 80mm rolls */
+      width: 72mm;
       margin: 0 auto;
       padding: 4mm;
       color: #000;
       background: #fff;
     }
 
-    h1  { font-size: 12pt; text-align: center; margin-bottom: 4mm; }
+    h1  { font-size: 12pt; text-align: center; margin-bottom: 2mm; }
+    .shopinfo { text-align: center; font-size: 8pt; margin-bottom: 2mm; }
     .meta { font-size: 8pt; margin-bottom: 3mm; }
     hr  { border: none; border-top: 1px dashed #000; margin: 2mm 0; }
 
@@ -66,7 +72,6 @@ export function buildReceiptHTML(sale: Sale): string {
 
     .footer { text-align: center; font-size: 8pt; margin-top: 4mm; }
 
-    /* ── Print-only rules ── */
     @media print {
       html, body { width: 72mm; }
       @page { margin: 0; size: 72mm auto; }
@@ -76,12 +81,13 @@ export function buildReceiptHTML(sale: Sale): string {
 </head>
 <body>
   <h1>SATIŞ FİŞİ</h1>
+  ${shopName ? `<div class="shopinfo"><strong>${shopName}</strong></div>` : ''}
+  ${shopPhone ? `<div class="shopinfo">${shopPhone}</div>` : ''}
 
   <div class="meta">
     <div>Tarih : ${formatDate(sale.createdAt)}</div>
-    <div>Satış : ${sale.localId.slice(0, 8).toUpperCase()}</div>
+    ${showOrderNumber ? `<div>Satış : ${sale.localId.slice(0, 8).toUpperCase()}</div>` : ''}
     <div>Kasa  : ${sale.registerId}</div>
-    ${sale.customerId ? `<div>Müşteri: ${sale.customerId}</div>` : ''}
   </div>
 
   <hr/>
@@ -103,7 +109,7 @@ export function buildReceiptHTML(sale: Sale): string {
   <table class="totals">
     <tr><td>Ara Toplam</td><td style="text-align:right">${formatCurrency(sale.subtotal)}</td></tr>
     <tr><td>İndirim</td><td style="text-align:right">-${formatCurrency(sale.discountTotal)}</td></tr>
-    <tr><td>KDV</td><td style="text-align:right">${formatCurrency(sale.taxTotal)}</td></tr>
+    ${showTaxBreakdown ? `<tr><td>KDV</td><td style="text-align:right">${formatCurrency(sale.taxTotal)}</td></tr>` : ''}
     <tr class="grand"><td>TOPLAM</td><td style="text-align:right">${formatCurrency(sale.grandTotal)}</td></tr>
   </table>
 
@@ -118,15 +124,13 @@ export function buildReceiptHTML(sale: Sale): string {
 
   <hr/>
   <div class="footer">
-    <p>Bizi tercih ettiğiniz için teşekkür ederiz!</p>
+    <p>${footerMessage}</p>
     <p style="margin-top:2mm;font-size:7pt">Yazdırıldı ${new Date().toLocaleString('tr-TR')}</p>
   </div>
 
-  <!-- Auto-print and close when opened via window.open() -->
   <script>
     window.onload = function() {
       window.print();
-      // Give the print dialog time to open before closing the tab
       setTimeout(function() { window.close(); }, 1000);
     };
   </script>

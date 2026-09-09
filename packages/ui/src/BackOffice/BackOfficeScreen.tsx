@@ -20,8 +20,9 @@ import { PurchaseInvoicePanel } from './PurchaseInvoicePanel'
 import { SalesInvoicesPanel } from './SalesInvoicesPanel'
 import { UsersPanel } from './UsersPanel'
 import { StockCountScreen } from './StockCountScreen'
+import { ReceiptSettingsPanel } from './ReceiptSettingsPanel'
 
-type Tab = 'cash' | 'accounts' | 'finance' | 'products' | 'stockCount' | 'purchases' | 'sales' | 'users'
+type Tab = 'cash' | 'accounts' | 'finance' | 'products' | 'stockCount' | 'purchases' | 'sales' | 'users' | 'receiptSettings'
 
 export interface BackOfficeScreenProps {
   /** Jump straight to a tab on mount — used by PosScreen's "Ürün Ekle"
@@ -73,6 +74,7 @@ export function BackOfficeScreen({ initialTab, productInitialCreateValues }: Bac
             admin (see users.ts) — hiding the tab for non-admins is purely
             a UX nicety on top of that, not the actual security boundary. */}
         {isAdmin && <TabButton active={tab === 'users'} onClick={() => setTab('users')}>👤 Kullanıcılar</TabButton>}
+        {isAdmin && <TabButton active={tab === 'receiptSettings'} onClick={() => setTab('receiptSettings')}>⚙️ Fiş Ayarları</TabButton>}
       </div>
 
       {tab === 'cash' && canSeeFinanceTabs && <CashRegisterPanel />}
@@ -83,6 +85,7 @@ export function BackOfficeScreen({ initialTab, productInitialCreateValues }: Bac
       {tab === 'purchases' && canSeeFinanceTabs && <PurchaseInvoicePanel />}
       {tab === 'sales' && canSeeFinanceTabs && <SalesInvoicesPanel />}
       {tab === 'users' && isAdmin && <UsersPanel />}
+      {tab === 'receiptSettings' && isAdmin && <ReceiptSettingsPanel />}
     </div>
   )
 }

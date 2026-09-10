@@ -115,6 +115,17 @@ export class BarcodeService implements IBarcodeService {
   #initWebListener(): void {
     this.keydownListener = (e: KeyboardEvent) => {
       if (this.paused) return
+            // A focused text input (e.g. PosScreen's search box, which stays
+      // auto-focused between scans) already receives these same
+      // keystrokes through React's own onChange/onKeyDown and handles
+      // Enter itself. Without this guard, a keyboard-wedge scanner's
+      // characters would be processed TWICE for one physical scan —
+      // once by the focused input's own handler, once by this global
+      // listener — adding the product to the cart twice.
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
 
       // Ignore modifier-only presses so they don't pollute the buffer.
       if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {

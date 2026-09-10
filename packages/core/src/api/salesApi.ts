@@ -227,6 +227,9 @@ export const productsApi = {
   activateProduct(id: string): Promise<Product> {
     return request<Product>(`/api/products/${id}/activate`, { method: 'PATCH' })
   },
+  deleteProduct(id: string): Promise<void> {
+    return request<void>(`/api/products/${id}`, { method: 'DELETE' })
+  },
   adjustStock(id: string, delta: number, reason: string): Promise<Product> {
     return request<Product>(`/api/products/${id}/stock`, { method: 'PATCH', body: JSON.stringify({ delta, reason }) })
   },

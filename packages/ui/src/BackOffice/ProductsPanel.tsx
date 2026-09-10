@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
-  productsApi, categoriesApi, quickSaleGroupsApi, getApiBaseUrl,
+  productsApi, categoriesApi, quickSaleGroupsApi, getApiBaseUrl, ApiError,
   type Product, type Category, type QuickSaleGroup, type CreateProductInput, type UpdateProductInput,
 } from '@pazariopos/core'
 import { money } from '../lib/format'
@@ -495,6 +495,30 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
       await productsApi.activateProduct(p.id)
     }
     await load()
+  }, [load])
+
+  const handleDelete = useCallback(async (p: Product) => {
+    if (!window.confirm(`"${p.name}" ürününü kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) {
+      return
+    }
+    try {
+      await productsApi.deleteProduct(p.id)
+      await load()
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // Server sends a JSON body ({ error, message }) even on failure —
+        // ApiError.message is that raw body text, so parse it for the
+        // friendly Turkish message rather than showing raw JSON.
+        try {
+          const parsed = JSON.parse(err.message) as { message?: string }
+          setMessage(`Hata: ${parsed.message ?? err.message}`)
+        } catch {
+          setMessage(`Hata: ${err.message}`)
+        }
+      } else {
+        setMessage(`Hata: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
   }, [load])
 
   const filtered = products.filter(p => {
@@ -1011,8 +1035,11 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
                     <button className="mr-2 text-xs font-medium text-[var(--color-petrol)] hover:underline" onClick={() => startEdit(p)}>
                       Düzenle
                     </button>
-                    <button className="text-xs font-medium text-[var(--color-copper)] hover:underline" onClick={() => void handleToggleActive(p)}>
+                    <button className="mr-2 text-xs font-medium text-[var(--color-copper)] hover:underline" onClick={() => void handleToggleActive(p)}>
                       {p.isActive ? 'Pasife Al' : 'Aktifleştir'}
+                    </button>
+                    <button className="text-xs font-medium text-red-600 hover:underline" onClick={() => void handleDelete(p)}>
+                      Sil
                     </button>
                   </td>
                 </tr>

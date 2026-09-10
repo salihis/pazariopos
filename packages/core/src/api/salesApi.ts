@@ -51,7 +51,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      // Only send Content-Type when there's actually a body — Fastify's
+      // default JSON parser throws FST_ERR_CTP_EMPTY_JSON_BODY when it
+      // sees this header on a bodyless request (e.g. DELETE, or a PATCH
+      // like /activate that takes no payload).
+      ...(init?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...init?.headers,
     },

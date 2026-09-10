@@ -134,7 +134,51 @@ export const productsRoutes: FastifyPluginAsync = async (app) => {
       }
     })
   }
+  // ── DELETE /api/products/:id ──
+  // Hard delete only when the product has never appeared in a sale,
+  // purchase, or stock count — otherwise deleting it would corrupt
+  // those historical rows (same referential-integrity concern as the
+  // deactivate/activate comment above). Anything that's ever touched
+  // a real transaction should be deactivated instead, never deleted.
+  app.delete('/:id', { preHandler: [app.authenticate, app.requireRole('admin', 'warehouse')] }, async (req, reply) => {
+    const paramsResult = paramsSchema.safeParse(req.params)
+    if (!paramsResult.success) {
+      return reply.code(400).send({ error: 'ValidationError', issues: paramsResult.error.issues })
+    }
+    const { id } = paramsResult.data
 
+    const existing = await prisma.product.findUnique({ where: { id } })
+    if (!existing) {
+      return reply.code(404).send({ error: 'NotFound', message: `Product "${id}" does not exist.` })
+    }
+
+    const [saleLineCount, purchaseLineCount, stockCountItemCount] = await Promise.all([
+      prisma.saleLine.count({ where: { productId: id } }),
+      prisma.purchaseLine.count({ where: { productId: id } }),
+      prisma.stockCountItem.count({ where: { productId: id } }),
+    ])
+
+    if (saleLineCount > 0 || purchaseLineCount > 0 || stockCountItemCount > 0) {
+      return reply.code(409).send({
+        error: 'ProductInUse',
+        message: 'Bu ürün satış, alış veya stok sayım geçmişinde kullanılmış, silinemez. Bunun yerine pasife alabilirsiniz.',
+      })
+    }
+
+    try {
+      await prisma.product.delete({ where: { id } })
+    } catch (err) {
+      app.log.error(err, 'Failed to delete product')
+      return reply.code(500).send({ error: 'InternalError', message: 'Ürün silinemedi.' })
+    }
+
+    // Best-effort image cleanup — an orphaned file on disk is harmless.
+    if (existing.imageUrl) {
+      await unlink(path.join(productImagesDir, path.basename(existing.imageUrl))).catch(() => {})
+    }
+
+    return reply.code(204).send()
+  })
   // ── PATCH /api/products/:id/stock — manual adjustment ──
   app.patch('/:id/stock', { preHandler: [app.authenticate, app.requireRole('admin', 'warehouse')] }, async (req, reply) => {
     const paramsResult = paramsSchema.safeParse(req.params)

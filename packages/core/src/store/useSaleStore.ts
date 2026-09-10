@@ -71,6 +71,7 @@ export interface SaleStoreState {
   // ── Cart actions (act on the ACTIVE slot) ──
   addLine(line: CartLine): void
   removeLine(productId: string): void
+  setQuantity(productId: string, quantity: number): void
   clearCart(): void
   setCustomer(customerId: string | null): void
 
@@ -273,7 +274,36 @@ export const useSaleStore = create<SaleStoreState>()(
         }
       })
     },
+    setQuantity(productId, quantity) {
+      set(state => {
+        const activeCart = state.slots[state.activeSlotIndex]?.cart ?? []
 
+        // Dropping to 0 (or below) removes the line entirely — same
+        // outcome as the ✕ button, just reachable via the stepper too.
+        if (quantity <= 0) {
+          const nextCart = activeCart.filter(l => l.product.id !== productId)
+          return {
+            slots: state.slots.map((slot, i) => (i === state.activeSlotIndex ? { ...slot, cart: nextCart } : slot)),
+            cart: nextCart,
+          }
+        }
+
+        const nextCart = activeCart.map(l => {
+          if (l.product.id !== productId) return l
+          // total is always (unitPrice - discountAmount + taxAmount) * quantity
+          // (see productToCartLine) — recover the per-unit amount from the
+          // existing total/quantity rather than re-deriving it here, so this
+          // stays correct even if per-unit pricing logic changes later.
+          const perUnit = l.quantity > 0 ? l.total / l.quantity : l.unitPrice - l.discountAmount + l.taxAmount
+          return { ...l, quantity, total: perUnit * quantity }
+        })
+
+        return {
+          slots: state.slots.map((slot, i) => (i === state.activeSlotIndex ? { ...slot, cart: nextCart } : slot)),
+          cart: nextCart,
+        }
+      })
+    },
     clearCart() {
       set(state => ({
         slots: state.slots.map((slot, i) => (i === state.activeSlotIndex ? { cart: [], customerId: null } : slot)),

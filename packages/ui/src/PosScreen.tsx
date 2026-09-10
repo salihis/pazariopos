@@ -85,6 +85,7 @@ export function PosScreen() {
   const lastSyncError    = useSaleStore(s => s.lastSyncError)
   const addLine          = useSaleStore(s => s.addLine)
   const removeLine       = useSaleStore(s => s.removeLine)
+  const setQuantity        = useSaleStore(s => s.setQuantity)
   const submitSale       = useSaleStore(s => s.submitSale)
   const checkAccountBalance = useSaleStore(s => s.checkAccountBalance)
 
@@ -851,7 +852,25 @@ export function PosScreen() {
                     {cart.map(line => (
                       <tr key={line.product.id} className="border-b border-[var(--color-paper-line)]/60">
                         <td className="py-2.5">{line.product.name}</td>
-                        <td className="tabular-money py-2.5 text-right">{line.quantity}</td>
+                                                <td className="py-2.5 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="flex h-6 w-6 items-center justify-center rounded border border-[var(--color-paper-line)] text-[var(--color-petrol)] transition hover:border-[var(--color-petrol)]"
+                              onClick={() => setQuantity(line.product.id, line.quantity - 1)}
+                            >
+                              −
+                            </button>
+                            <span className="tabular-money w-6 text-center">{line.quantity}</span>
+                            <button
+                              type="button"
+                              className="flex h-6 w-6 items-center justify-center rounded border border-[var(--color-paper-line)] text-[var(--color-petrol)] transition hover:border-[var(--color-petrol)]"
+                              onClick={() => setQuantity(line.product.id, line.quantity + 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </td>
                         <td className="tabular-money py-2.5 text-right">{money(line.total)}</td>
                         <td className="py-2.5 text-right">
                           <button

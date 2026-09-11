@@ -12,7 +12,7 @@ const ReceiptSettingsSchema = z.object({
 
 export async function registerReceiptSettingsRoutes(fastify: FastifyInstance) {
   // GET — Ayarları getir
-  fastify.get("/api/receipt-settings", async (_request, reply) => {
+  fastify.get("/", async (_request, reply) => {
     let settings = await prisma.receiptSettings.findFirst();
 
     // Eğer ayar yoksa varsayılan oluştur
@@ -33,7 +33,7 @@ export async function registerReceiptSettingsRoutes(fastify: FastifyInstance) {
 
   // POST — Ayarları kaydet
   fastify.post<{ Body: typeof ReceiptSettingsSchema._type }>(
-    "/api/receipt-settings",
+    "/",
     async (request, reply) => {
       const body = ReceiptSettingsSchema.parse(request.body);
 

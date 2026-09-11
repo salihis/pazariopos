@@ -29,7 +29,7 @@ const EXCEL_HEADERS = [
 type ExcelRow = Record<(typeof EXCEL_HEADERS)[number], unknown>
 
 type ImportOutcome = { created: number; updated: number; errors: string[] }
-
+type DeleteOutcome = { deleted: number; skipped: number; notFound: number; errors: string[] }
 const UNIT_LABELS: Record<Product['unit'], string> = {
   piece: 'Adet', box: 'Kutu', kg: 'Kg', lt: 'Lt',
 }
@@ -143,8 +143,11 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
   const [imageUploadError, setImageUploadError] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const deleteFileInputRef = useRef<HTMLInputElement>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+  const [deleteOutcome, setDeleteOutcome] = useState<DeleteOutcome | null>(null)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -367,6 +370,66 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
       setIsImporting(false)
     }
   }, [categories, products, findOrCreateCategoryId, load])
+
+    // ── Excel'den toplu silme ──
+  // Yalnızca "Ürün Kodu" (sku) sütununu okur — dışa aktarılan Excel'i
+  // filtreleyip silinecek satırları bırakman yeterli, diğer sütunlar
+  // yok sayılır. Satış/alış/stok sayımında kullanılmış ürünler sunucu
+  // tarafından reddedilir (409); bu satırlar "kullanımda, atlandı"
+  // olarak raporlanır, işlem durmaz, kalan satırlarla devam eder.
+  const handleBulkDeleteFile = useCallback(async (file: File) => {
+    const buffer = await file.arrayBuffer()
+    const workbook = XLSX.read(buffer, { type: 'array' })
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]!]
+    const rows = XLSX.utils.sheet_to_json<ExcelRow>(firstSheet!, { defval: '' })
+
+    const skus = rows.map(row => String(row['Ürün Kodu'] ?? '').trim()).filter(Boolean)
+    if (skus.length === 0) {
+      setDeleteOutcome({ deleted: 0, skipped: 0, notFound: 0, errors: ['Dosyada geçerli "Ürün Kodu" bulunamadı.'] })
+      return
+    }
+
+    if (!window.confirm(`${skus.length} ürün kalıcı olarak silinecek. Bu işlem geri alınamaz. Devam edilsin mi?`)) {
+      return
+    }
+
+    setIsBulkDeleting(true)
+    setDeleteOutcome(null)
+    const outcome: DeleteOutcome = { deleted: 0, skipped: 0, notFound: 0, errors: [] }
+
+    for (const sku of skus) {
+      const product = products.find(p => p.sku === sku)
+      if (!product) {
+        outcome.notFound++
+        outcome.errors.push(`${sku}: ürün bulunamadı, atlandı.`)
+        continue
+      }
+      try {
+        await productsApi.deleteProduct(product.id)
+        outcome.deleted++
+      } catch (err) {
+        if (err instanceof ApiError) {
+          try {
+            const parsed = JSON.parse(err.message) as { error?: string; message?: string }
+            if (parsed.error === 'ProductInUse') {
+              outcome.skipped++
+              outcome.errors.push(`${sku} (${product.name}): kullanımda, atlandı.`)
+              continue
+            }
+            outcome.errors.push(`${sku} (${product.name}): ${parsed.message ?? err.message}`)
+          } catch {
+            outcome.errors.push(`${sku} (${product.name}): ${err.message}`)
+          }
+        } else {
+          outcome.errors.push(`${sku} (${product.name}): ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+    }
+
+    setDeleteOutcome(outcome)
+    setIsBulkDeleting(false)
+    await load()
+  }, [products, load])
 
   const startEdit = useCallback((p: Product) => {
     const cat = categories.find(c => c.id === p.categoryId)
@@ -661,6 +724,25 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
           className="rounded-lg bg-[var(--color-saffron)] px-4 py-2 text-sm font-semibold text-[var(--color-ink)] transition hover:bg-[var(--color-saffron-dark)] hover:text-white"
           onClick={startCreate}
         >
+                <button
+          className="rounded-lg border border-red-600 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => deleteFileInputRef.current?.click()}
+          disabled={isBulkDeleting}
+          type="button"
+        >
+          {isBulkDeleting ? 'Siliniyor…' : '🗑️ Excel\'den Toplu Sil'}
+        </button>
+        <input
+          ref={deleteFileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0]
+            if (file) void handleBulkDeleteFile(file)
+            e.target.value = ''
+          }}
+        />
           + Yeni Ürün
         </button>
       </div>
@@ -705,6 +787,30 @@ export function ProductsPanel({ initialCreateValues, onProductCreated }: Product
           </button>
         </div>
       )}
+
+          {deleteOutcome && (
+            <div className="rounded-2xl border border-[var(--color-paper-line)] bg-white/50 p-4 text-sm">
+          <div className="font-medium">
+            Toplu silme tamamlandı: <span className="text-red-600">{deleteOutcome.deleted} silindi</span>
+            {deleteOutcome.skipped > 0 && (
+              <span className="text-[var(--color-copper)]">, {deleteOutcome.skipped} kullanımda (atlandı)</span>
+            )}
+            {deleteOutcome.notFound > 0 && (
+              <span className="text-[var(--color-ink-soft)]">, {deleteOutcome.notFound} bulunamadı</span>
+            )}
+          </div>
+          {deleteOutcome.errors.length > 0 && (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-[var(--color-copper)]">
+              {deleteOutcome.errors.map((err, i) => <li key={i}>{err}</li>)}
+            </ul>
+          )}
+          <button className="mt-2 text-xs text-[var(--color-ink-soft)] hover:underline" onClick={() => setDeleteOutcome(null)}>
+            Kapat
+          </button>
+        </div>
+      )}
+
+    
 
       {showForm && (
         <div className="rounded-2xl border border-[var(--color-paper-line)] bg-[var(--color-paper-dim)] p-5">

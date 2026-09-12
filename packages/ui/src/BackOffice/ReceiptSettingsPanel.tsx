@@ -1,14 +1,42 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useReceiptSettingsStore } from '@pazariopos/core'
+
+interface FormState {
+  shopName: string
+  shopPhone: string
+  showTaxBreakdown: boolean
+  showOrderNumber: boolean
+  footerMessage: string
+}
 
 export function ReceiptSettingsPanel() {
   const { settings, loading, error, fetchSettings, updateSettings } = useReceiptSettingsStore()
+
+  // Alanlar yerel state'te tutulur, her tuş vuruşunda sunucuya istek
+  // ATILMAZ — sadece "Kaydet"e basınca tek bir istekle hepsi birden
+  // gönderilir. settings sunucudan geldiğinde (ilk yükleme) form bir
+  // kez bu değerlerle doldurulur.
+  const [form, setForm] = useState<FormState | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
 
   useEffect(() => {
     void fetchSettings()
   }, [fetchSettings])
 
-  if (loading && !settings) {
+  useEffect(() => {
+    if (settings && !form) {
+      setForm({
+        shopName: settings.shopName,
+        shopPhone: settings.shopPhone,
+        showTaxBreakdown: settings.showTaxBreakdown,
+        showOrderNumber: settings.showOrderNumber,
+        footerMessage: settings.footerMessage,
+      })
+    }
+  }, [settings, form])
+
+  if (loading && !form) {
     return <div className="text-center py-8">Yükleniyor...</div>
   }
 
@@ -16,12 +44,26 @@ export function ReceiptSettingsPanel() {
     return <div className="text-red-500 py-8">Hata: {error}</div>
   }
 
-  if (!settings) {
+  if (!form) {
     return <div className="text-gray-500 py-8">Fiş ayarları yüklenemedi</div>
   }
 
-  const handleChange = (field: string, value: string | boolean) => {
-    void updateSettings({ [field]: value } as any)
+  const handleChange = (field: keyof FormState, value: string | boolean) => {
+    setForm(prev => (prev ? { ...prev, [field]: value } : prev))
+    setSaveMessage(null)
+  }
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    setSaveMessage(null)
+    try {
+      await updateSettings(form)
+      setSaveMessage('Kaydedildi.')
+    } catch (err) {
+      setSaveMessage(`Hata: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -41,7 +83,7 @@ export function ReceiptSettingsPanel() {
           </label>
           <input
             type="text"
-            value={settings.shopName}
+            value={form.shopName}
             onChange={(e) => handleChange('shopName', e.target.value)}
             placeholder="Örn: Pazario Market"
             className="w-full px-3 py-2 border border-[var(--color-paper-line)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-petrol)]"
@@ -55,7 +97,7 @@ export function ReceiptSettingsPanel() {
           </label>
           <input
             type="text"
-            value={settings.shopPhone}
+            value={form.shopPhone}
             onChange={(e) => handleChange('shopPhone', e.target.value)}
             placeholder="Örn: 0224 1234567"
             className="w-full px-3 py-2 border border-[var(--color-paper-line)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-petrol)]"
@@ -65,11 +107,10 @@ export function ReceiptSettingsPanel() {
 
       {/* Checkbox'lar */}
       <div className="space-y-3 border-t pt-4">
-        
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
-            checked={settings.showTaxBreakdown}
+            checked={form.showTaxBreakdown}
             onChange={(e) => handleChange('showTaxBreakdown', e.target.checked)}
             className="w-4 h-4"
           />
@@ -79,7 +120,7 @@ export function ReceiptSettingsPanel() {
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
-            checked={settings.showOrderNumber}
+            checked={form.showOrderNumber}
             onChange={(e) => handleChange('showOrderNumber', e.target.checked)}
             className="w-4 h-4"
           />
@@ -93,7 +134,7 @@ export function ReceiptSettingsPanel() {
           Footer Metni (İsteğe bağlı)
         </label>
         <textarea
-          value={settings.footerMessage}
+          value={form.footerMessage}
           onChange={(e) => handleChange('footerMessage', e.target.value)}
           placeholder="Örn: Bizi tercih ettiğiniz için teşekkür ederiz"
           className="w-full px-3 py-2 border border-[var(--color-paper-line)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-petrol)]"
@@ -101,19 +142,32 @@ export function ReceiptSettingsPanel() {
         />
       </div>
 
+      {/* Kaydet */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={isSaving}
+          className="rounded-lg bg-[var(--color-petrol)] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[var(--color-petrol)]/90 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isSaving ? 'Kaydediliyor…' : 'Kaydet'}
+        </button>
+        {saveMessage && <span className="text-sm text-[var(--color-ink-soft)]">{saveMessage}</span>}
+      </div>
+
       {/* Ön İzleme */}
       <div className="border-t pt-4 mt-6">
         <h3 className="text-lg font-semibold text-[var(--color-ink)] mb-3">Fiş Ön İzlemesi</h3>
         <div className="bg-white border border-[var(--color-paper-line)] rounded-lg p-4 font-mono text-xs whitespace-pre-wrap max-w-xs mx-auto">
-          {settings.shopName && <div className="text-center font-bold mb-2">{settings.shopName}</div>}
-          {settings.shopPhone && <div className="text-center text-[0.7rem] mb-2">{settings.shopPhone}</div>}
+          {form.shopName && <div className="text-center font-bold mb-2">{form.shopName}</div>}
+          {form.shopPhone && <div className="text-center text-[0.7rem] mb-2">{form.shopPhone}</div>}
           <div className="border-t border-dashed my-2"></div>
-          {settings.showOrderNumber && <div>Fiş No: 00123</div>}
+          {form.showOrderNumber && <div>Fiş No: 00123</div>}
           <div className="border-t border-dashed my-2"></div>
           <div>Toplam: 99,99 ₺</div>
-          {settings.showTaxBreakdown && <div>KDV: 15,29 ₺</div>}
+          {form.showTaxBreakdown && <div>KDV: 15,29 ₺</div>}
           <div className="border-t border-dashed my-2"></div>
-          {settings.footerMessage && <div className="text-center text-[0.7rem] mt-2">{settings.footerMessage}</div>}
+          {form.footerMessage && <div className="text-center text-[0.7rem] mt-2">{form.footerMessage}</div>}
         </div>
       </div>
     </div>

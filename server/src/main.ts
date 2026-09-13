@@ -66,6 +66,7 @@ async function buildServer() {
       'http://localhost:5173',
       'http://localhost:1420',
       'https://tauri.localhost',
+      'http://tauri.localhost',
       'tauri://localhost',
     ],
   })

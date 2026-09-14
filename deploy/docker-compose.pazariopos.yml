@@ -51,7 +51,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pazariopos-postgres:5432/${POSTGRES_DB}?schema=public
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: 12h
-      CORS_ORIGIN: https://erp.pazario.tr,http://erp.pazario.tr
+      CORS_ORIGIN: https://erp.pazario.tr,http://erp.pazario.tr,https://tauri.localhost,http://tauri.localhost,tauri://localhost
       UPLOADS_DIR: /app/uploads
     volumes:
       # Persistent — the server container itself is rebuilt on every
